@@ -11,7 +11,8 @@
     "site:watch": "node scripts/site-watch.mjs",
     "spec:render": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ nowatch: true });\"",
     "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
-    "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\""
+    "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "@openid4vc/openid4vci": "^0.4.6",
@@ -29,6 +30,7 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.8.1",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
   }
 }
