@@ -12,7 +12,9 @@
     "spec:render": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ nowatch: true });\"",
     "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
     "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "@openid4vc/openid4vci": "^0.4.6",
@@ -31,6 +33,7 @@
     "@types/node": "^24.8.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "wrangler": "^4.88.0"
   }
 }
