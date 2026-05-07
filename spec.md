@@ -1,12 +1,12 @@
 x401: HTTP Proof Challenge Protocol
 ==================
 
-Status: Draft
+Status: [[badge: Draft]]
 
 Version: 0.1.0
 
 Editors:
-~ Daniel Buchner
+~ [Daniel Buchner](https://github.com/csuwildcat) - [Proof](https://proof.com)
 
 Participate:
 ~ [GitHub repo](https://github.com/csuwildcat/x401)
@@ -579,50 +579,6 @@ x401 Agents:
 8. SHOULD use short expiry windows when a signed request object is used.
 9. MAY use `request_uri` or signed request objects for the Agent-created Presentation Request, but those objects are created by the Agent and are not supplied by the x401 challenge payload.
 
-## Composable Agent and Entity Identification
-
-x401 requires the Verifier to bind the Wallet presentation to the Agent Identifier used by the HTTP caller, but it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
-
-These mechanisms compose cleanly with x401 when they:
-
-1. produce an authenticated caller identifier the Verifier can map to the route's accepted Agent Identifier policy;
-2. bind that identifier to the HTTP request being evaluated, including the method, target URI or authority, freshness values, and relevant x401 retry material;
-3. can be verified before or during x401 proof validation;
-4. do not alter the x401 DCQL Requirement, Verifier Challenge, VP Artifact, or `402 Payment Required` boundary;
-5. allow the Verifier to reject mismatches between the authenticated caller, the OpenID4VP `client_id`, the VP Artifact `agent_id`, and any Verification Token holder identity.
-
-### Web Bot Auth and HTTP Message Signatures
-
-Web Bot Auth is a natural option for adding request-bound identification to x401. A calling Agent can sign the initial protected-route request, the retry request carrying a VP Artifact or Verification Token, and the OAuth token exchange request using HTTP Message Signatures. The Agent can also use the `Signature-Agent` header to point the Verifier to an HTTP Message Signatures key directory.
-
-When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `Authorization` header when retrying with x401 or token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
-
-A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the x401 challenge, Wallet presentation binding, DCQL satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the DCQL Requirement, or prove end-user delegation.
-
-### OAuth Proof-of-Possession and Client Authentication
-
-Deployments that use the OAuth token exchange leg MAY require additional OAuth client authentication at `proof.oauth.token_endpoint`. Mutual TLS client authentication and certificate-bound access tokens can bind the token request, and later token use, to a certificate controlled by the Agent. This works well when the Agent Identifier is a certificate-bound identifier, domain-bound client identifier, SPIFFE ID, or other identifier that the Verifier can map from the TLS client certificate.
-
-DPoP can bind OAuth token requests and resource requests to an Agent-controlled key at the application layer. Because this version of x401 defines Bearer Verification Tokens, a DPoP-bound Verification Token retry needs either a deployment-specific profile or a future x401 token retry profile that permits `token_type: DPoP` and the `DPoP` proof header. Even when DPoP is used only at the token endpoint, the endpoint MUST ensure the DPoP key maps to the same Agent Identifier that the Wallet presentation targets.
-
-### Workload Identity
-
-In service-to-service deployments, the Agent may be a workload rather than a user-facing application. The Agent Identifier can be derived from a workload identity mechanism such as a SPIFFE ID carried in an X.509-SVID or JWT-SVID, or from WIMSE work on workload identity tokens and HTTP Message Signatures. These mechanisms are useful for infrastructure agents, internal tools, and managed compute environments where the Verifier needs to know which deployed workload made the request.
-
-Workload identity proves the caller's operational identity. It does not prove that the caller holds the requested credential, that the credential subject is authorized, or that an end user delegated authority to the Agent. Those remain x401 proof validation and policy questions.
-
-### DID, Signed Request Objects, and Wallet-Facing Client Binding
-
-An Agent MAY use a DID, HTTPS origin, domain-bound client identifier, certificate-bound identifier, or other verifier-approved scheme as its OpenID4VP `client_id`. If the Agent signs its OpenID4VP request object, that signature helps the Wallet bind the presentation to the Agent's key and metadata.
-
-This wallet-facing binding is necessary but not always sufficient. The Verifier also needs an HTTP-layer or token-layer way to determine that the protected-route caller is the same Agent Identifier the Wallet presentation targeted. Deployments can accomplish this by using the same key, a linked key, or a verifier-recognized mapping across the OpenID4VP client identifier, HTTP Message Signature identity, mutual TLS certificate, DPoP key, workload identity, or Verification Token holder identity.
-
-### Delegation and Actor Evidence
-
-Some deployments need to know not only which Agent made the request, but who or what authorized that Agent to act. Delegation evidence can be carried as an additional credential, a VP disclosed through the x401 DCQL Requirement, an OAuth Token Exchange actor chain, a GNAP grant artifact, a Verifiable Intent credential, or another signed mandate or capability.
-
-Delegation evidence composes best when it is scoped, time-limited, replay-resistant, and bound to the Agent Identifier and requested resource or action. It does not replace caller authentication: the Verifier still needs to know which Agent is presenting the delegation evidence and whether that Agent is the one authorized by the evidence.
-
 ## Verifiable Presentation Submission
 
 This phase of the protocol defines how the Agent packages the Wallet's presentation result and submits it back to the Verifier. The Agent either retries the protected route directly with a VP Artifact or uses that same VP Artifact in the OAuth token exchange described in the next leg.
@@ -1019,6 +975,50 @@ Host: research.example.com
 Authorization: Bearer eyJhbGciOi...
 ```
 
+## Composable Agent and Entity Identification
+
+x401 requires the Verifier to bind the Wallet presentation to the Agent Identifier used by the HTTP caller, but it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
+
+These mechanisms compose cleanly with x401 when they:
+
+1. produce an authenticated caller identifier the Verifier can map to the route's accepted Agent Identifier policy;
+2. bind that identifier to the HTTP request being evaluated, including the method, target URI or authority, freshness values, and relevant x401 retry material;
+3. can be verified before or during x401 proof validation;
+4. do not alter the x401 DCQL Requirement, Verifier Challenge, VP Artifact, or `402 Payment Required` boundary;
+5. allow the Verifier to reject mismatches between the authenticated caller, the OpenID4VP `client_id`, the VP Artifact `agent_id`, and any Verification Token holder identity.
+
+### Web Bot Auth and HTTP Message Signatures
+
+Web Bot Auth is a natural option for adding request-bound identification to x401. A calling Agent can sign the initial protected-route request, the retry request carrying a VP Artifact or Verification Token, and the OAuth token exchange request using HTTP Message Signatures. The Agent can also use the `Signature-Agent` header to point the Verifier to an HTTP Message Signatures key directory.
+
+When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `Authorization` header when retrying with x401 or token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
+
+A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the x401 challenge, Wallet presentation binding, DCQL satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the DCQL Requirement, or prove end-user delegation.
+
+### OAuth Proof-of-Possession and Client Authentication
+
+Deployments that use the OAuth token exchange leg MAY require additional OAuth client authentication at `proof.oauth.token_endpoint`. Mutual TLS client authentication and certificate-bound access tokens can bind the token request, and later token use, to a certificate controlled by the Agent. This works well when the Agent Identifier is a certificate-bound identifier, domain-bound client identifier, SPIFFE ID, or other identifier that the Verifier can map from the TLS client certificate.
+
+DPoP can bind OAuth token requests and resource requests to an Agent-controlled key at the application layer. Because this version of x401 defines Bearer Verification Tokens, a DPoP-bound Verification Token retry needs either a deployment-specific profile or a future x401 token retry profile that permits `token_type: DPoP` and the `DPoP` proof header. Even when DPoP is used only at the token endpoint, the endpoint MUST ensure the DPoP key maps to the same Agent Identifier that the Wallet presentation targets.
+
+### Workload Identity
+
+In service-to-service deployments, the Agent may be a workload rather than a user-facing application. The Agent Identifier can be derived from a workload identity mechanism such as a SPIFFE ID carried in an X.509-SVID or JWT-SVID, or from WIMSE work on workload identity tokens and HTTP Message Signatures. These mechanisms are useful for infrastructure agents, internal tools, and managed compute environments where the Verifier needs to know which deployed workload made the request.
+
+Workload identity proves the caller's operational identity. It does not prove that the caller holds the requested credential, that the credential subject is authorized, or that an end user delegated authority to the Agent. Those remain x401 proof validation and policy questions.
+
+### DID, Signed Request Objects, and Wallet-Facing Client Binding
+
+An Agent MAY use a DID, HTTPS origin, domain-bound client identifier, certificate-bound identifier, or other verifier-approved scheme as its OpenID4VP `client_id`. If the Agent signs its OpenID4VP request object, that signature helps the Wallet bind the presentation to the Agent's key and metadata.
+
+This wallet-facing binding is necessary but not always sufficient. The Verifier also needs an HTTP-layer or token-layer way to determine that the protected-route caller is the same Agent Identifier the Wallet presentation targeted. Deployments can accomplish this by using the same key, a linked key, or a verifier-recognized mapping across the OpenID4VP client identifier, HTTP Message Signature identity, mutual TLS certificate, DPoP key, workload identity, or Verification Token holder identity.
+
+### Delegation and Actor Evidence
+
+Some deployments need to know not only which Agent made the request, but who or what authorized that Agent to act. Delegation evidence can be carried as an additional credential, a VP disclosed through the x401 DCQL Requirement, an OAuth Token Exchange actor chain, a GNAP grant artifact, a Verifiable Intent credential, or another signed mandate or capability.
+
+Delegation evidence composes best when it is scoped, time-limited, replay-resistant, and bound to the Agent Identifier and requested resource or action. It does not replace caller authentication: the Verifier still needs to know which Agent is presenting the delegation evidence and whether that Agent is the one authorized by the evidence.
+
 ## Security Considerations
 
 ### Replay Prevention
@@ -1118,9 +1118,9 @@ How can a Holder fully delegate identity or proof capability to an Agent so the 
 
 Future work should specify how such a delegation is created, presented, constrained, revoked, audited, and bound to the Agent's request-signing key. It should also answer whether delegated proof is represented as a credential requested by DCQL, as a companion artifact to the VP Artifact, as OAuth or GNAP delegation state, or as a separate profile layered above x401.
 
-### Agent Authentication on Top
+### Adding Agent Authentication
 
-Is agent authentication on top of x401 required? The base protocol requires the Verifier to bind the returned presentation to an Agent Identifier, but it does not require a globally authenticated public agent identity for every deployment. Some deployments may accept pairwise, ephemeral, enterprise-local, or token-bound Agent Identifiers; others may require Web Bot Auth, HTTP Message Signatures, mutual TLS, DPoP, SPIFFE, WIMSE, DID-based authentication, or another caller-authentication profile.
+Is adding agent authentication on top of x401 required? The base protocol requires the Verifier to bind the returned presentation to an Agent Identifier, but it does not require a globally authenticated public agent identity for every deployment. Some deployments may accept pairwise, ephemeral, enterprise-local, or token-bound Agent Identifiers; others may require Web Bot Auth, HTTP Message Signatures, mutual TLS, DPoP, SPIFFE, WIMSE, DID-based authentication, or another caller-authentication profile.
 
 Future work should define when stronger agent authentication is mandatory, how a Verifier advertises acceptable caller-authentication mechanisms in or near the x401 challenge, which status codes and headers are used when caller authentication is missing, and how mismatches are reported across HTTP caller identity, OpenID4VP client identity, VP Artifact `agent_id`, Verification Token holder identity, and delegation evidence.
 

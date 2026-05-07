@@ -9,9 +9,9 @@
     "demo:start": "tsx src/server.ts",
     "site:build": "node scripts/build-pages.mjs",
     "site:watch": "node scripts/site-watch.mjs",
-    "spec:render": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ nowatch: true });\"",
-    "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
     "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\"",
+    "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
+    "spec:render": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ nowatch: true });\"",
     "test": "vitest run"
   },
   "dependencies": {
