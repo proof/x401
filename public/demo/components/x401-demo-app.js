@@ -26,7 +26,7 @@ const STEP_VISUALS = {
 };
 
 const PHASE_PACKET_SUMMARIES = {
-  gate: "401 envelope plus the stored verifier challenge record.",
+  gate: "401 proof requirement plus the stored Verifier Challenge record.",
   request: "Signed request object and its OIDC4VP request payload.",
   presentation: "Delegated VP bundle prepared by the local wallet.",
   submit: "Verifier receipt plus credential verification result.",
@@ -68,7 +68,7 @@ function buildExpectedPacket(app, stepId) {
         route: PAPER_ROUTE,
         method: "GET",
         expected_status: 401,
-        expected_challenge: "x401 envelope with request_uri",
+        expected_requirement: "x401 proof requirement with request_uri",
       };
     case "request":
       return app.challengeRecord
@@ -78,7 +78,7 @@ function buildExpectedPacket(app, stepId) {
               app.challengeRecord.authorizationRequestPayload,
             requestObjectJwt: app.requestObjectJwt ?? "Pending request_uri fetch",
           }
-        : { waiting_on: "x401 challenge from the relying party" };
+        : { waiting_on: "x401 proof requirement from the relying party" };
     case "presentation":
       return app.challenge
         ? {
@@ -112,11 +112,11 @@ const STEP_BLUEPRINTS = [
     id: "gate",
     shortLabel: "Encounter Gate",
     title: "The AI agent asks for the protected medical study",
-    meta: "401 challenge",
+    meta: "401 proof requirement",
     pendingNote:
       "The first request goes straight to the relying party and hits the proof gate on the paper route.",
     pendingOutcome:
-      "The verifier will answer with a x401 challenge, a request URI, and a credential acquisition hint.",
+      "The verifier will answer with an x401 proof requirement, a request URI, and a credential acquisition hint.",
     actionLabel: "Run the protected paper request",
     annotationPending: "Waiting for the first paper request.",
     annotationLocked: "This phase starts the story.",
@@ -125,7 +125,7 @@ const STEP_BLUEPRINTS = [
       const envelope = await parseJson(response);
 
       if (response.status !== 401) {
-        throw new Error(`Expected a 401 proof challenge but received ${response.status}.`);
+        throw new Error(`Expected a 401 proof requirement but received ${response.status}.`);
       }
 
       const challengeRecordResponse = await fetch(
@@ -134,7 +134,7 @@ const STEP_BLUEPRINTS = [
       const challengeRecord = await parseJson(challengeRecordResponse);
 
       if (!challengeRecordResponse.ok) {
-        throw new Error("The demo could not recover the stored challenge record.");
+        throw new Error("The demo could not recover the stored Verifier Challenge record.");
       }
 
       app.challenge = envelope;
@@ -142,14 +142,14 @@ const STEP_BLUEPRINTS = [
       app.requestObjectJwt = challengeRecord.requestObjectJwt;
 
       return {
-        annotation: "x401 challenge issued by the relying party.",
+        annotation: "x401 proof requirement issued by the relying party.",
         note:
-          "The paper route blocked access and pushed the proof requirement out as a by-reference verifier challenge.",
+          "The paper route blocked access and pushed the proof requirement out with a by-reference Verifier Challenge.",
         outcome:
           "The agent now holds a challenge ID, a request URI, and the issuer hint needed to continue.",
         highlights: [
           `HTTP ${response.status} with WWW-Authenticate: x401`,
-          `Challenge ${envelope.challenge_id}`,
+          `Verifier Challenge ${envelope.challenge_id}`,
           `Request URI ${envelope.proof.request_uri}`,
         ],
         payload: {
@@ -172,7 +172,7 @@ const STEP_BLUEPRINTS = [
       "The holder-side flow becomes concrete enough to drive the local delegated presentation step.",
     actionLabel: "Fetch the signed request object",
     annotationPending: "Ready to resolve the verifier request URI.",
-    annotationLocked: "Waiting for the challenge to exist.",
+    annotationLocked: "Waiting for the proof requirement to exist.",
     async run(app) {
       if (!app.challenge?.proof?.request_uri) {
         throw new Error("No request URI is available yet.");
@@ -190,7 +190,7 @@ const STEP_BLUEPRINTS = [
       return {
         annotation: "Signed request object recovered from the request URI.",
         note:
-          "The agent pulled the verifier-signed request and matched it to the stored challenge state.",
+          "The agent pulled the verifier-signed request and matched it to the stored Verifier Challenge state.",
         outcome:
           "The relying party DID, nonce, state, and direct_post destination are now available for the holder flow.",
         highlights: [
@@ -220,7 +220,7 @@ const STEP_BLUEPRINTS = [
     annotationLocked: "Waiting for the signed request object.",
     async run(app) {
       if (!app.challenge?.challenge_id) {
-        throw new Error("No challenge exists yet for wallet presentation.");
+        throw new Error("No Verifier Challenge exists yet for wallet presentation.");
       }
 
       const data = await fetchJsonOrThrow(
@@ -259,7 +259,7 @@ const STEP_BLUEPRINTS = [
     annotationLocked: "Waiting for the delegated VP payload.",
     async run(app) {
       if (!app.challenge?.challenge_id) {
-        throw new Error("No challenge exists yet for verifier submission.");
+        throw new Error("No Verifier Challenge exists yet for verifier submission.");
       }
 
       const data = await fetchJsonOrThrow(
@@ -318,7 +318,7 @@ const STEP_BLUEPRINTS = [
       return {
         annotation: "Protected paper released to the AI agent.",
         note:
-          "The relying party recognized the verifier receipt and skipped the challenge branch on the retry.",
+          "The relying party recognized the verifier receipt and skipped the proof requirement branch on the retry.",
         outcome:
           "The study is now accessible because the doctor's active Texas board certification was proven end to end.",
         highlights: [

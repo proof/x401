@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>x401 | HTTP Proof Challenge Protocol</title>
+    <title>x401 | HTTP Proof Requirement Protocol</title>
     <meta
       name="description"
-      content="x401 is an HTTP proof challenge protocol for protected routes. It uses 401, OIDC4VP, and optional OIDC4VCI hints to make credential-gated HTTP flows machine-readable."
+      content="x401 is an HTTP proof requirement protocol for protected routes. It uses 401, OIDC4VP, and optional OIDC4VCI hints to make credential-gated HTTP flows machine-readable."
     />
     <link rel="stylesheet" href="styles.css" />
     <script
@@ -70,7 +70,7 @@
           <div class="hero-copy">
             <h1 class="hero-title">
               <span class="hero-title__line">
-                <span class="hero-title__protocol">x401</span>: native proof challenges for
+                <span class="hero-title__protocol">x401</span>: native proof requirements for
               </span>
               <wa-carousel
                 class="hero-rotator"
@@ -91,7 +91,7 @@
             </h1>
 
             <p class="hero-copy__lede">
-              A universal HTTP-based challenge flow that enables resource gating 
+              A universal HTTP-based proof requirement flow that enables resource gating
               based on fulfillment of credential proof requirements. x401 reuses OIDC4VP and
               optional OIDC4VCI hints, while leaving payment to 402 protocols.
             </p>
@@ -118,8 +118,8 @@
                 </span>
                 <h3>Route-Scoped Gating</h3>
                 <p>
-                  Challenge a single route or operation with a structured proof
-                  contract instead of app-specific glue.
+                  Gate a single route or operation with a structured proof
+                  requirement instead of app-specific glue.
                 </p>
               </div>
             </wa-card>
@@ -159,7 +159,7 @@
           <div class="section-heading">
             <h2>How x401 Works</h2>
             <p>
-              x401 mimics familiar HTTP challenge and retry flows using
+              x401 uses familiar HTTP 401 and retry flows with
               <code>401 Unauthorized</code> as the protected-route proof boundary.
             </p>
           </div>
@@ -229,7 +229,7 @@
             <wa-card class="feature-card hover-elevate" appearance="filled-outlined">
               <div class="feature-card__body">
                 <span class="feature-card__icon">401</span>
-                <h3>HTTP-Native Challenge</h3>
+                <h3>HTTP-Native Requirement</h3>
                 <p>
                   Uses <code>401 Unauthorized</code> and
                   <code>WWW-Authenticate: x401</code> as the route-facing protocol
@@ -316,7 +316,7 @@
                 <h3>OAuth</h3>
                 <p>
                   Strong for delegated access and login, but not a general
-                  credential-proof challenge for a specific protected route.
+                  credential-proof requirement for a specific protected route.
                 </p>
               </div>
             </wa-card>
@@ -326,7 +326,7 @@
                 <h3>OIDC VP/VCI</h3>
                 <p>
                   Excellent proof and issuance primitives, but they do not by
-                  themselves define the HTTP challenge contract at the route.
+                  themselves define the HTTP proof requirement contract at the route.
                 </p>
               </div>
             </wa-card>
@@ -358,7 +358,7 @@
                   </thead>
                   <tbody>
                     <tr>
-                      <th>Protected-route HTTP 401 challenge</th>
+                      <th>Protected-route HTTP 401 proof requirement</th>
                       <td><span class="status status--partial">Partial</span></td>
                       <td><span class="status status--partial">Partial</span></td>
                       <td><span class="status status--gap">No</span></td>
@@ -374,7 +374,7 @@
                       <td><span class="status status--yes">Yes</span></td>
                     </tr>
                     <tr>
-                      <th>Issuance discovery hints attached to the challenge</th>
+                      <th>Issuance discovery hints attached to the proof requirement</th>
                       <td><span class="status status--gap">No</span></td>
                       <td><span class="status status--gap">No</span></td>
                       <td><span class="status status--partial">Partial</span></td>
@@ -446,7 +446,7 @@
           </div>
 
           <p>
-            HTTP-native proof challenges for credential-gated routes, APIs,
+            HTTP-native proof requirements for credential-gated routes, APIs,
             applications, and agentic workflows.
           </p>
         </div>

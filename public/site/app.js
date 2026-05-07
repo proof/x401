@@ -13,17 +13,17 @@ const FLOW_STEPS = [
     sequenceLines: ["holder->>verifier: GET protected route"],
   },
   {
-    shortTitle: "Return challenge",
-    title: "Verifier returns a x401 challenge",
+    shortTitle: "Return requirement",
+    title: "Verifier returns an x401 proof requirement",
     iconLabel: "401",
     description:
-      "The route responds with 401 Unauthorized, WWW-Authenticate: x401, and a x401 envelope describing the proof contract.",
+      "The route responds with 401 Unauthorized, WWW-Authenticate: x401, and an x401 payload describing the proof requirement.",
     copy:
-      "<strong>2.</strong> The verifier answers with <strong>401 Unauthorized</strong>, a <strong>WWW-Authenticate: x401</strong> challenge, and a body carrying the x401 envelope.",
+      "<strong>2.</strong> The verifier answers with <strong>401 Unauthorized</strong> and a <strong>WWW-Authenticate: x401</strong> header carrying the x401 payload.",
     from: "verifier",
     to: "holder",
     sequenceLines: [
-      "verifier-->>holder: 401 + WWW-Authenticate: x401<br/>x401 envelope with OIDC4VP request",
+      "verifier-->>holder: 401 + WWW-Authenticate: x401<br/>x401 payload with proof requirement",
     ],
   },
   {
