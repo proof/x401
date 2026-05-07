@@ -1,0 +1,6 @@
+/*
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.webawesome.com; style-src 'self' 'unsafe-inline' https://*.webawesome.com https://fonts.googleapis.com; img-src 'self' data: blob: https://*.webawesome.com https://*.fontawesome.com; connect-src 'self' https://api.github.com https://*.webawesome.com https://*.fontawesome.com; font-src 'self' data: https://*.webawesome.com https://fonts.gstatic.com; frame-ancestors 'none'
