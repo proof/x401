@@ -1,0 +1,16 @@
+{
+  "public_root": "./www",
+  "resource_path": "./www",
+  "specs": [
+    {
+      "title": "x401: HTTP Proof Challenge Protocol",
+      "output_path": "./www/spec",
+      "spec_directory": "./",
+      "source": {
+        "host": "github",
+        "account": "csuwildcat",
+        "repo": "x401"
+      }
+    }
+  ]
+}

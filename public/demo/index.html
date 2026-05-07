@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" class="wa-theme-default wa-palette-default wa-brand-blue wa-dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>x401 Demo Page</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <script
+      src="https://kit.webawesome.com/078584c3316546f4.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="site-backdrop" aria-hidden="true"></div>
+
+    <header class="site-header" data-site-header>
+      <div class="container site-header__inner">
+        <a class="brand" href="../" aria-label="x401 homepage">
+          <span class="brand__chip pixel-border">
+            <span>x401</span>
+          </span>
+          <span class="brand__wordmark">Protocol</span>
+        </a>
+
+        <button
+          class="nav-toggle"
+          type="button"
+          data-nav-toggle
+          aria-expanded="false"
+          aria-controls="site-nav-panel"
+        >
+          Menu
+        </button>
+
+        <div class="site-header__panel" id="site-nav-panel" data-nav-panel>
+          <nav class="site-nav" aria-label="Primary">
+            <a href="../#how-it-works">How It Works</a>
+            <a href="../#features">Features</a>
+            <a href="../#comparison">Comparison</a>
+            <a href="../spec/">Spec</a>
+          </nav>
+
+          <div class="site-header__actions">
+            <a
+              class="github-link"
+              href="https://github.com/csuwildcat/x401"
+              target="_blank"
+              rel="noreferrer"
+            >
+              GitHub
+            </a>
+
+            <wa-button variant="brand" appearance="filled" data-href="../spec/">
+              Get Started
+            </wa-button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-shell">
+      <section class="subpage-hero">
+        <p class="subpage-kicker">Demo Page</p>
+        <h1>The interactive walkthrough stays separate while the project site becomes the primary x401 homepage.</h1>
+        <p>
+          The current verifier, wallet, issuer, and protected-route walkthrough is
+          still local-first. This page is the stable handoff point while the
+          protocol site and specification become the main entry.
+        </p>
+
+        <div class="hero-copy__actions">
+          <wa-button variant="brand" appearance="filled" data-href="../">
+            Back to Project Site
+          </wa-button>
+          <wa-button
+            variant="neutral"
+            appearance="outlined"
+            data-href="interactive/"
+            data-local-only
+          >
+            Open Local Walkthrough
+          </wa-button>
+          <wa-button variant="neutral" appearance="outlined" data-href="../spec/">
+            Read Specification
+          </wa-button>
+        </div>
+
+        <wa-card class="subpage-panel" appearance="filled-outlined">
+          <div class="subpage-panel__body">
+            <section class="subpage-panel__section">
+              <h2>Current State</h2>
+              <ul class="plain-list">
+                <li>The homepage now carries the main protocol narrative.</li>
+                <li>The interactive doctor-research walkthrough remains a local demo.</li>
+                <li>GitHub Pages publishes the project site and spec without pretending backend endpoints exist.</li>
+              </ul>
+            </section>
+
+            <section class="subpage-panel__section">
+              <h2>Run Locally</h2>
+              <pre class="command-block"><code>npm run demo:start</code></pre>
+              <p class="subpage-callout">
+                After the server starts, open <code>/demo/interactive/</code> to
+                step through the seeded verifier, wallet, issuer, and protected route.
+              </p>
+              <p class="subpage-callout" data-remote-only>
+                On GitHub Pages this page stays informational for now because the
+                live walkthrough still depends on server-side protocol endpoints.
+              </p>
+            </section>
+          </div>
+        </wa-card>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container site-footer__inner">
+        <div class="site-footer__brand">
+          <div class="brand brand--footer">
+            <span class="brand__chip pixel-border">
+              <span>x401</span>
+            </span>
+            <span class="brand__wordmark">Protocol</span>
+          </div>
+          <p>HTTP-native proof challenges for protected resources and agentic flows.</p>
+        </div>
+
+        <div class="site-footer__links">
+          <a href="../">Home</a>
+          <a href="../spec/">Specification</a>
+          <a href="interactive/" data-local-only>Interactive Demo</a>
+          <a href="https://github.com/csuwildcat/x401" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+        </div>
+      </div>
+
+      <div class="site-footer__meta">
+        <div class="container">
+          <p>© <span data-current-year></span> x401 Protocol</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="../app.js"></script>
+  </body>
+</html>
