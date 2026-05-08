@@ -24,7 +24,7 @@
     "jose": "^6.2.2",
     "lit": "^3.3.2",
     "mermaid": "^11.13.0",
-    "spec-up": "0.11.1"
+    "spec-up": "0.11.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",
