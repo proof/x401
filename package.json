@@ -11,7 +11,7 @@
     "site:watch": "node scripts/site-watch.mjs",
     "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\"",
     "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
-    "spec:render": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ nowatch: true });\"",
+    "spec:render": "node scripts/render-spec.mjs",
     "test": "vitest run"
   },
   "dependencies": {

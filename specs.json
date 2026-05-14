@@ -4,7 +4,7 @@
   "specs": [
     {
       "title": "x401: HTTP Proof Requirement Protocol",
-      "logo": "https://cdn.prod.website-files.com/6481e5e765142e9387833b4f/69e15f36c3e1570407de848b_Proof%20Wordmark%20Logo.svg",
+      "logo": "x401-icon.svg",
       "logo_link": "https://proof.com",
       "output_path": "./www/spec",
       "spec_directory": "./",

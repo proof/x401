@@ -1,7 +1,7 @@
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import specUp from "spec-up";
+import { renderSpec } from "./render-spec.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +14,7 @@ const headersFile = path.join(repoRoot, "_headers");
 process.chdir(repoRoot);
 
 await rm(outputDir, { recursive: true, force: true });
-await specUp({ nowatch: true });
+await renderSpec({ nowatch: true });
 
 await writeFile(
   path.join(outputDir, "index.html"),

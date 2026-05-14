@@ -3,7 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import specUp from "spec-up";
+import { renderSpec } from "./render-spec.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,7 +30,7 @@ const liveReloadClient = `
 </script>`;
 
 async function buildSpec() {
-  await specUp({ nowatch: true });
+  await renderSpec({ nowatch: true });
 }
 
 function injectLiveReload(html) {
