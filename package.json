@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Site, test implementation, and specification for the x401 proof-gated HTTP resource protocol",
+  "description": "Specification, local demo, and tests for the x401 proof-gated HTTP resource protocol",
   "scripts": {
     "demo:dev": "tsx watch src/server.ts",
     "demo:start": "tsx src/server.ts",
@@ -23,7 +23,6 @@
     "express": "^5.2.1",
     "jose": "^6.2.2",
     "lit": "^3.3.2",
-    "mermaid": "^11.13.0",
     "spec-up": "0.11.3"
   },
   "devDependencies": {

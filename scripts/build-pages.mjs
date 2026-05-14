@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import specUp from "spec-up";
@@ -6,37 +6,29 @@ import specUp from "spec-up";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
-const nodeModulesDir = path.join(repoRoot, "node_modules");
 const outputDir = path.join(repoRoot, "www");
-const siteSourceDir = path.join(repoRoot, "public", "site");
 const demoLandingPage = path.join(repoRoot, "public", "demo", "index.html");
-const mermaidDistDir = path.join(nodeModulesDir, "mermaid", "dist");
+const demoStyles = path.join(repoRoot, "public", "demo", "styles.css");
+const headersFile = path.join(repoRoot, "_headers");
 
 process.chdir(repoRoot);
 
 await rm(outputDir, { recursive: true, force: true });
 await specUp({ nowatch: true });
 
-const siteEntries = await readdir(siteSourceDir);
-
-for (const entry of siteEntries) {
-  await cp(path.join(siteSourceDir, entry), path.join(outputDir, entry), {
-    recursive: true,
-  });
-}
+await writeFile(
+  path.join(outputDir, "index.html"),
+  `<!doctype html>
+<meta charset="utf-8" />
+<meta http-equiv="refresh" content="0; url=./spec/" />
+<title>x401 Specification</title>
+<p>Redirecting to <a href="./spec/">the x401 specification</a>.</p>
+`,
+);
+await writeFile(path.join(outputDir, "_redirects"), "/  /spec/  302\n");
+await cp(headersFile, path.join(outputDir, "_headers"));
 
 await mkdir(path.join(outputDir, "demo"), { recursive: true });
 await cp(demoLandingPage, path.join(outputDir, "demo", "index.html"));
-await mkdir(path.join(outputDir, "vendor", "mermaid", "chunks"), {
-  recursive: true,
-});
-await cp(
-  path.join(mermaidDistDir, "mermaid.esm.min.mjs"),
-  path.join(outputDir, "vendor", "mermaid", "mermaid.esm.min.mjs"),
-);
-await cp(
-  path.join(mermaidDistDir, "chunks", "mermaid.esm.min"),
-  path.join(outputDir, "vendor", "mermaid", "chunks", "mermaid.esm.min"),
-  { recursive: true },
-);
+await cp(demoStyles, path.join(outputDir, "demo", "styles.css"));
 await writeFile(path.join(outputDir, ".nojekyll"), "");

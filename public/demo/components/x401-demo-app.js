@@ -3,6 +3,9 @@ import "./x401-story-timeline.js";
 
 const PAPER_ROUTE = "/papers/medical-study-123";
 const EXISTING_APP_TOKEN = "demo-existing-application-token";
+const PROOF_REQUIRED_HEADER = "PROOF-REQUIRED";
+const PROOF_PRESENTATION_HEADER = "PROOF-PRESENTATION";
+const PROOF_RESPONSE_HEADER = "PROOF-RESPONSE";
 
 const ACTOR_DESCRIPTIONS = {
   doctor: "Board-certified physician holding the credential.",
@@ -27,10 +30,10 @@ const STEP_VISUALS = {
 };
 
 const PHASE_PACKET_SUMMARIES = {
-  gate: "Decoded X401: require payload from the protected route.",
+  gate: "Decoded PROOF-REQUIRED payload from the protected route.",
   request: "Agent-created OIDC4VP Authorization Request payload.",
   presentation: "Delegated VP bundle prepared by the local wallet.",
-  present: "X401: present request header carrying a VP Artifact.",
+  present: "PROOF-PRESENTATION request header carrying a VP Artifact.",
   retry: "Final protected paper payload returned by the relying party.",
 };
 
@@ -65,26 +68,25 @@ function decodeBase64UrlJson(value) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-function parseX401Header(value) {
+function parseProofHeader(value, headerName) {
   if (!value) {
     return null;
   }
 
   if (value.includes(",")) {
-    throw new Error("Expected a single X401 message, but the header contained a comma-separated value.");
+    throw new Error(`Expected a single ${headerName} object, but the header contained a comma-separated value.`);
   }
 
-  const match = value.trim().match(/^([A-Za-z][A-Za-z0-9_-]*)\s+([A-Za-z0-9_-]+)$/);
+  const encoded = value.trim();
 
-  if (!match) {
-    throw new Error("The X401 header did not match '<action> <base64url-json>'.");
+  if (!/^[A-Za-z0-9_-]+$/.test(encoded)) {
+    throw new Error(`The ${headerName} header did not contain a base64url JSON object.`);
   }
 
   return {
     raw: value,
-    action: match[1].toLowerCase(),
-    encoded: match[2],
-    payload: decodeBase64UrlJson(match[2]),
+    encoded,
+    payload: decodeBase64UrlJson(encoded),
   };
 }
 
@@ -177,7 +179,7 @@ function buildVpArtifact(app) {
   return artifact;
 }
 
-function buildX401TokenObject(accessToken) {
+function buildProofTokenObject(accessToken) {
   return {
     scheme: "x401",
     version: "0.1.0",
@@ -197,7 +199,7 @@ function getVerificationToken(data) {
   );
 }
 
-function getX401ErrorMessage(message) {
+function getProofResponseErrorMessage(message) {
   const error = message?.payload;
   const code = error?.error ?? "x401_error";
   const description = error?.error_description ? `: ${error.error_description}` : "";
@@ -231,8 +233,8 @@ function buildExpectedPacket(app, stepId) {
       return {
         route: PAPER_ROUTE,
         method: "GET",
-        expected_header: "X401: require <base64url-x401-payload>",
-        requirement_source: "X401 header, not response body",
+        expected_header: "PROOF-REQUIRED: <base64url-x401-payload>",
+        requirement_source: "PROOF-REQUIRED header, not response body",
       };
     case "request":
       return app.authorizationRequestPayload
@@ -257,7 +259,7 @@ function buildExpectedPacket(app, stepId) {
         ? {
             route: PAPER_ROUTE,
             method: "GET",
-            x401: `present ${app.x401PresentValue}`,
+            proofPresentation: app.proofPresentationValue,
             decoded_vp_artifact: app.vpArtifact,
           }
         : { waiting_on: "Locally generated delegated VP payload" };
@@ -267,8 +269,8 @@ function buildExpectedPacket(app, stepId) {
             route: PAPER_ROUTE,
             method: "GET",
             authorization: `Bearer ${EXISTING_APP_TOKEN}`,
-            x401: `token ${app.x401TokenValue ?? "<base64url-x401-token-object>"}`,
-            decoded_x401_token: app.x401TokenObject,
+            proofPresentation: app.proofTokenValue ?? "<base64url-x401-token-object>",
+            decoded_x401_token: app.proofTokenObject,
           }
         : { waiting_on: "x401 Verification Token" };
     default:
@@ -281,46 +283,43 @@ const STEP_BLUEPRINTS = [
     id: "gate",
     shortLabel: "Encounter Gate",
     title: "The AI agent asks for the protected medical study",
-    meta: "X401 proof requirement",
+    meta: "proof requirement",
     pendingNote:
       "The first request goes straight to the relying party and hits the proof gate on the paper route.",
     pendingOutcome:
-      "The verifier will answer with X401: require and a base64url-encoded x401 payload.",
+      "The verifier will answer with PROOF-REQUIRED and a base64url-encoded x401 payload.",
     actionLabel: "Run the protected paper request",
     annotationPending: "Waiting for the first paper request.",
     annotationLocked: "This phase starts the story.",
     async run(app) {
       const response = await fetch(PAPER_ROUTE);
-      const x401Header = response.headers.get("X401");
-      const x401Message = parseX401Header(x401Header);
+      const proofRequired = parseProofHeader(
+        response.headers.get(PROOF_REQUIRED_HEADER),
+        PROOF_REQUIRED_HEADER,
+      );
 
-      if (!x401Message) {
-        throw new Error(`Expected an X401 proof requirement but received HTTP ${response.status}.`);
+      if (!proofRequired) {
+        throw new Error(`Expected a PROOF-REQUIRED proof requirement but received HTTP ${response.status}.`);
       }
 
-      if (x401Message.action !== "require") {
-        throw new Error(`Expected X401: require but received X401: ${x401Message.action}.`);
-      }
-
-      app.requirementPayload = x401Message.payload;
-      app.challengeId = getChallengeIdFromRequirement(x401Message.payload);
+      app.requirementPayload = proofRequired.payload;
+      app.challengeId = getChallengeIdFromRequirement(proofRequired.payload);
 
       return {
         annotation: "x401 proof requirement issued by the relying party.",
         note:
-          "The paper route exposed the complete route-scoped proof requirement through the X401 header.",
+          "The paper route exposed the complete route-scoped proof requirement through the PROOF-REQUIRED header.",
         outcome:
           "The agent decoded the proof requirement without needing to parse the response body for protocol state.",
         highlights: [
-          `HTTP ${response.status} with X401: require`,
+          `HTTP ${response.status} with PROOF-REQUIRED`,
           `Verifier Challenge ${getChallengeValue(app)}`,
           `Presentation protocol ${getRequirementProof(app).presentation_protocol}`,
         ],
         payload: {
           httpStatus: response.status,
-          x401: x401Message.raw,
-          action: x401Message.action,
-          decodedPayload: x401Message.payload,
+          proofRequired: proofRequired.raw,
+          decodedPayload: proofRequired.payload,
         },
       };
     },
@@ -416,37 +415,40 @@ const STEP_BLUEPRINTS = [
     id: "present",
     shortLabel: "Present VP",
     title: "The agent presents the VP Artifact to the original route",
-    meta: "X401 present",
+    meta: "proof presentation",
     pendingNote:
       "The wallet result is packaged as a VP Artifact and sent back on the same paper route.",
     pendingOutcome:
-      "The verifier will process X401: present and either accept the proof, issue a reusable token, or return X401: error.",
+      "The verifier will process PROOF-PRESENTATION and either accept the proof, issue a reusable token, or return PROOF-RESPONSE.",
     actionLabel: "Present the VP on the route",
     annotationPending: "Ready to present the VP Artifact to the original route.",
     annotationLocked: "Waiting for the delegated VP payload.",
     async run(app) {
       if (!app.localPresentation) {
-        throw new Error("No local presentation exists yet for X401: present.");
+        throw new Error("No local presentation exists yet for PROOF-PRESENTATION.");
       }
 
       app.vpArtifact = buildVpArtifact(app);
-      app.x401PresentValue = encodeBase64UrlJson(app.vpArtifact);
+      app.proofPresentationValue = encodeBase64UrlJson(app.vpArtifact);
 
       const response = await fetch(PAPER_ROUTE, {
         headers: {
-          X401: `present ${app.x401PresentValue}`,
+          [PROOF_PRESENTATION_HEADER]: app.proofPresentationValue,
         },
       });
       const data = await parseJson(response);
-      const x401Response = parseX401Header(response.headers.get("X401"));
+      const proofResponse = parseProofHeader(
+        response.headers.get(PROOF_RESPONSE_HEADER),
+        PROOF_RESPONSE_HEADER,
+      );
 
-      if (x401Response?.action === "error") {
-        app.x401Error = x401Response.payload;
-        throw new Error(`X401 proof error ${getX401ErrorMessage(x401Response)}`);
+      if (proofResponse?.payload?.error) {
+        app.proofResponseError = proofResponse.payload;
+        throw new Error(`Proof response error ${getProofResponseErrorMessage(proofResponse)}`);
       }
 
       if (!response.ok) {
-        throw new Error("The relying party rejected the X401: present proof artifact.");
+        throw new Error("The relying party rejected the PROOF-PRESENTATION proof artifact.");
       }
 
       app.presentationResult = data;
@@ -455,11 +457,11 @@ const STEP_BLUEPRINTS = [
       return {
         annotation: "Verifier accepted the VP Artifact on the protected route.",
         note:
-          "The route processed X401: present, decoded the VP Artifact, and validated the presentation, delegation scope, issuer metadata, and status list entry.",
+          "The route processed PROOF-PRESENTATION, decoded the VP Artifact, and validated the presentation, delegation scope, issuer metadata, and status list entry.",
         outcome:
-          "The proof phase is complete. This demo uses the returned Verification Token to show the X401: token retry shape.",
+          "The proof phase is complete. This demo uses the returned Verification Token to show the reusable PROOF-PRESENTATION token retry shape.",
         highlights: [
-          `HTTP ${response.status} after X401: present`,
+          `HTTP ${response.status} after PROOF-PRESENTATION`,
           `holder ${formatDidForDisplay(data?.body?.verification?.holderDid ?? data?.verification?.holderDid ?? "verified")}`,
           `token ${app.verificationToken ? "issued" : "not returned"}`,
         ],
@@ -467,7 +469,7 @@ const STEP_BLUEPRINTS = [
           request: {
             route: PAPER_ROUTE,
             method: "GET",
-            x401: `present ${app.x401PresentValue}`,
+            proofPresentation: app.proofPresentationValue,
             decodedVpArtifact: app.vpArtifact,
           },
           response: data,
@@ -478,13 +480,13 @@ const STEP_BLUEPRINTS = [
   {
     id: "retry",
     shortLabel: "Retry Route",
-    title: "The agent retries with app auth plus X401 token",
+    title: "The agent retries with app auth plus a proof token",
     meta: "paper unlocked",
     pendingNote:
-      "The protected route is retried with the existing app Authorization token and separate x401 proof satisfaction in X401: token.",
+      "The protected route is retried with the existing app Authorization token and separate x401 proof satisfaction in PROOF-PRESENTATION.",
     pendingOutcome:
       "The paper should be released because the app token and x401 Verification Token bind to the same accepted caller context.",
-    actionLabel: "Replay the route with X401 token",
+    actionLabel: "Replay the route with proof token",
     annotationPending: "Ready to replay the original route with the x401 token.",
     annotationLocked: "Waiting for the x401 Verification Token.",
     async run(app) {
@@ -492,21 +494,24 @@ const STEP_BLUEPRINTS = [
         throw new Error("No x401 Verification Token exists yet for the retry.");
       }
 
-      app.x401TokenObject = buildX401TokenObject(app.verificationToken);
-      app.x401TokenValue = encodeBase64UrlJson(app.x401TokenObject);
+      app.proofTokenObject = buildProofTokenObject(app.verificationToken);
+      app.proofTokenValue = encodeBase64UrlJson(app.proofTokenObject);
 
       const response = await fetch(PAPER_ROUTE, {
         headers: {
           Authorization: `Bearer ${EXISTING_APP_TOKEN}`,
-          X401: `token ${app.x401TokenValue}`,
+          [PROOF_PRESENTATION_HEADER]: app.proofTokenValue,
         },
       });
       const paper = await parseJson(response);
-      const x401Response = parseX401Header(response.headers.get("X401"));
+      const proofResponse = parseProofHeader(
+        response.headers.get(PROOF_RESPONSE_HEADER),
+        PROOF_RESPONSE_HEADER,
+      );
 
-      if (x401Response?.action === "error") {
-        app.x401Error = x401Response.payload;
-        throw new Error(`X401 token error ${getX401ErrorMessage(x401Response)}`);
+      if (proofResponse?.payload?.error) {
+        app.proofResponseError = proofResponse.payload;
+        throw new Error(`Proof token error ${getProofResponseErrorMessage(proofResponse)}`);
       }
 
       if (!response.ok) {
@@ -518,12 +523,12 @@ const STEP_BLUEPRINTS = [
       return {
         annotation: "Protected paper released to the AI agent.",
         note:
-          "The relying party preserved ordinary Authorization for the app and used X401: token only for x401 proof satisfaction.",
+          "The relying party preserved ordinary Authorization for the app and used PROOF-PRESENTATION only for x401 proof satisfaction.",
         outcome:
           "The study is now accessible because the doctor's active Texas board certification was proven end to end.",
         highlights: [
           `HTTP ${response.status} final route response`,
-          "Authorization plus X401: token",
+          "Authorization plus PROOF-PRESENTATION",
           paper.title,
           paper.reason,
         ],
@@ -532,8 +537,8 @@ const STEP_BLUEPRINTS = [
             route: PAPER_ROUTE,
             method: "GET",
             authorization: `Bearer ${EXISTING_APP_TOKEN}`,
-            x401: `token ${app.x401TokenValue}`,
-            decodedX401Token: app.x401TokenObject,
+            proofPresentation: app.proofTokenValue,
+            decodedProofToken: app.proofTokenObject,
           },
           response: paper,
         },
@@ -552,10 +557,10 @@ export class x401DemoApp extends LitElement {
     vpArtifact: { type: Object },
     presentationResult: { type: Object },
     verificationToken: { type: String },
-    x401PresentValue: { type: String },
-    x401TokenObject: { type: Object },
-    x401TokenValue: { type: String },
-    x401Error: { type: Object },
+    proofPresentationValue: { type: String },
+    proofTokenObject: { type: Object },
+    proofTokenValue: { type: String },
+    proofResponseError: { type: Object },
     paper: { type: Object },
     stepResults: { type: Array },
     completedStepIndex: { type: Number, attribute: false },
@@ -775,10 +780,10 @@ export class x401DemoApp extends LitElement {
     this.vpArtifact = null;
     this.presentationResult = null;
     this.verificationToken = null;
-    this.x401PresentValue = null;
-    this.x401TokenObject = null;
-    this.x401TokenValue = null;
-    this.x401Error = null;
+    this.proofPresentationValue = null;
+    this.proofTokenObject = null;
+    this.proofTokenValue = null;
+    this.proofResponseError = null;
     this.paper = null;
     this.stepResults = Array.from({ length: STEP_BLUEPRINTS.length }, () => null);
     this.completedStepIndex = -1;
@@ -817,10 +822,10 @@ export class x401DemoApp extends LitElement {
     this.vpArtifact = null;
     this.presentationResult = null;
     this.verificationToken = null;
-    this.x401PresentValue = null;
-    this.x401TokenObject = null;
-    this.x401TokenValue = null;
-    this.x401Error = null;
+    this.proofPresentationValue = null;
+    this.proofTokenObject = null;
+    this.proofTokenValue = null;
+    this.proofResponseError = null;
     this.paper = null;
     this.stepResults = Array.from({ length: STEP_BLUEPRINTS.length }, () => null);
     this.completedStepIndex = -1;
