@@ -26,7 +26,7 @@ const STEP_VISUALS = {
 };
 
 const PHASE_PACKET_SUMMARIES = {
-  gate: "401 proof requirement plus the stored Verifier Challenge record.",
+  gate: "X401 proof requirement plus the stored Verifier Challenge record.",
   request: "Signed request object and its OIDC4VP request payload.",
   presentation: "Delegated VP bundle prepared by the local wallet.",
   submit: "Verifier receipt plus credential verification result.",
@@ -67,7 +67,7 @@ function buildExpectedPacket(app, stepId) {
       return {
         route: PAPER_ROUTE,
         method: "GET",
-        expected_status: 401,
+        expected_header: "X401: require",
         expected_requirement: "x401 proof requirement with request_uri",
       };
     case "request":
@@ -112,7 +112,7 @@ const STEP_BLUEPRINTS = [
     id: "gate",
     shortLabel: "Encounter Gate",
     title: "The AI agent asks for the protected medical study",
-    meta: "401 proof requirement",
+    meta: "X401 proof requirement",
     pendingNote:
       "The first request goes straight to the relying party and hits the proof gate on the paper route.",
     pendingOutcome:
@@ -123,9 +123,10 @@ const STEP_BLUEPRINTS = [
     async run(app) {
       const response = await fetch(PAPER_ROUTE);
       const envelope = await parseJson(response);
+      const x401Header = response.headers.get("X401");
 
-      if (response.status !== 401) {
-        throw new Error(`Expected a 401 proof requirement but received ${response.status}.`);
+      if (!x401Header) {
+        throw new Error(`Expected an X401 proof requirement but received HTTP ${response.status}.`);
       }
 
       const challengeRecordResponse = await fetch(
@@ -148,13 +149,13 @@ const STEP_BLUEPRINTS = [
         outcome:
           "The agent now holds a challenge ID, a request URI, and the issuer hint needed to continue.",
         highlights: [
-          `HTTP ${response.status} with WWW-Authenticate: x401`,
+          `HTTP ${response.status} with X401: require`,
           `Verifier Challenge ${envelope.challenge_id}`,
           `Request URI ${envelope.proof.request_uri}`,
         ],
         payload: {
           httpStatus: response.status,
-          wwwAuthenticate: response.headers.get("WWW-Authenticate"),
+          x401: x401Header,
           envelope,
           challengeRecord,
         },

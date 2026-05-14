@@ -15,15 +15,15 @@ const FLOW_STEPS = [
   {
     shortTitle: "Return requirement",
     title: "Verifier returns an x401 proof requirement",
-    iconLabel: "401",
+    iconLabel: "X401",
     description:
-      "The route responds with 401 Unauthorized, WWW-Authenticate: x401, and an x401 payload describing the proof requirement.",
+      "The route responds with X401: require and an x401 payload describing the proof requirement.",
     copy:
-      "<strong>2.</strong> The verifier answers with <strong>401 Unauthorized</strong> and a <strong>WWW-Authenticate: x401</strong> header carrying the x401 payload.",
+      "<strong>2.</strong> The verifier answers with an <strong>X401: require</strong> header carrying the x401 payload.",
     from: "verifier",
     to: "holder",
     sequenceLines: [
-      "verifier-->>holder: 401 + WWW-Authenticate: x401<br/>x401 payload with proof requirement",
+      "verifier-->>holder: X401: require<br/>x401 payload with proof requirement",
     ],
   },
   {
@@ -43,12 +43,12 @@ const FLOW_STEPS = [
     title: "Wallet satisfies the proof request",
     iconLabel: "SUB",
     description:
-      "The wallet completes the standard OIDC4VP response flow and submits the presentation to the verifier.",
+      "The wallet completes the standard OIDC4VP response flow and returns the presentation to the verifier.",
     copy:
-      "<strong>4.</strong> The wallet fulfills the proof request using standard <strong>OIDC4VP</strong> response handling and submits the result to the verifier.",
+      "<strong>4.</strong> The wallet fulfills the proof request using standard <strong>OIDC4VP</strong> response handling and presents the result to the verifier.",
     from: "wallet",
     to: "verifier",
-    sequenceLines: ["wallet->>verifier: Submit VP response"],
+    sequenceLines: ["wallet->>verifier: Present VP response"],
   },
   {
     shortTitle: "Issue receipt",

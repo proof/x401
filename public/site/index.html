@@ -6,7 +6,7 @@
     <title>x401 | HTTP Proof Requirement Protocol</title>
     <meta
       name="description"
-      content="x401 is an HTTP proof requirement protocol for protected routes. It uses 401, OIDC4VP, and optional OIDC4VCI hints to make credential-gated HTTP flows machine-readable."
+      content="x401 is an HTTP proof requirement protocol for protected routes. It uses the X401 header, OIDC4VP, and optional OIDC4VCI hints to make credential-gated HTTP flows machine-readable."
     />
     <link rel="stylesheet" href="styles.css" />
     <script
@@ -159,8 +159,8 @@
           <div class="section-heading">
             <h2>How x401 Works</h2>
             <p>
-              x401 uses familiar HTTP 401 and retry flows with
-              <code>401 Unauthorized</code> as the protected-route proof boundary.
+              x401 uses a dedicated <code>X401</code> header and retry flow for
+              route-scoped proof requirements.
             </p>
           </div>
 
@@ -228,12 +228,12 @@
           <div class="feature-grid">
             <wa-card class="feature-card hover-elevate" appearance="filled-outlined">
               <div class="feature-card__body">
-                <span class="feature-card__icon">401</span>
+                <span class="feature-card__icon">X401</span>
                 <h3>HTTP-Native Requirement</h3>
                 <p>
-                  Uses <code>401 Unauthorized</code> and
-                  <code>WWW-Authenticate: x401</code> as the route-facing protocol
-                  boundary.
+                  Uses <code>X401: require</code>, <code>X401: present</code>,
+                  <code>X401: token</code>, and <code>X401: error</code> as the
+                  route-facing protocol boundary.
                 </p>
               </div>
             </wa-card>
@@ -336,7 +336,7 @@
                 <h3>DIDComm</h3>
                 <p>
                   Useful peer messaging transport, but not the simplest fit for a
-                  plain HTTP API that needs a machine-readable 401 flow.
+                  plain HTTP API that needs a machine-readable proof flow.
                 </p>
               </div>
             </wa-card>
@@ -358,7 +358,7 @@
                   </thead>
                   <tbody>
                     <tr>
-                      <th>Protected-route HTTP 401 proof requirement</th>
+                      <th>Protected-route HTTP proof requirement</th>
                       <td><span class="status status--partial">Partial</span></td>
                       <td><span class="status status--partial">Partial</span></td>
                       <td><span class="status status--gap">No</span></td>
