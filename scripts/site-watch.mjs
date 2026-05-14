@@ -8,11 +8,8 @@ import specUp from "spec-up";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
-const nodeModulesDir = path.join(repoRoot, "node_modules");
-const siteSourceDir = path.join(repoRoot, "public", "site");
 const demoSourceDir = path.join(repoRoot, "public", "demo");
 const builtSpecDir = path.join(repoRoot, "www", "spec");
-const mermaidDistDir = path.join(nodeModulesDir, "mermaid", "dist");
 const port = Number(process.env.PORT ?? 4011);
 
 process.chdir(repoRoot);
@@ -20,7 +17,6 @@ process.chdir(repoRoot);
 const htmlRoots = [
   { prefix: "/spec", dir: builtSpecDir },
   { prefix: "/demo", dir: demoSourceDir },
-  { prefix: "/", dir: siteSourceDir },
 ];
 
 const liveReloadClient = `
@@ -217,6 +213,10 @@ app.get("/__site_events", (_req, res) => {
   });
 });
 
+app.get("/", (_req, res) => {
+  res.redirect(302, "/spec/");
+});
+
 app.use(async (req, res, next) => {
   if (req.path === "/__site_events") {
     next();
@@ -249,10 +249,7 @@ app.use(async (req, res, next) => {
 
 app.use("/spec", express.static(builtSpecDir));
 app.use("/demo", express.static(demoSourceDir));
-app.use("/vendor/mermaid", express.static(mermaidDistDir));
-app.use(express.static(siteSourceDir));
 
-const stopWatchingSite = watchDirectoryTree(siteSourceDir, scheduleReload);
 const stopWatchingDemo = watchDirectoryTree(demoSourceDir, scheduleReload);
 
 const server = app.listen(port, () => {
@@ -260,7 +257,6 @@ const server = app.listen(port, () => {
 });
 
 function shutdown() {
-  stopWatchingSite();
   stopWatchingDemo();
   clearTimeout(reloadTimer);
 

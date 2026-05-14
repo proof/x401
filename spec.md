@@ -22,7 +22,10 @@ x401 defines an HTTP-based, route-scoped proof requirement protocol for requirin
 
 x401 uses:
 
-- **HTTP 401 Unauthorized** to signal that proof is required
+- the **`PROOF-REQUIRED` HTTP header field** to carry proof requirements
+- the **`PROOF-PRESENTATION` HTTP header field** to carry proof presentations or reusable proof-satisfaction tokens
+- the **`PROOF-RESPONSE` HTTP header field** to carry verifier response information, including x401 proof errors
+- **HTTP status codes** to express the overall response semantics independently of x401 proof state
 - **Digital Credentials Query Language (DCQL)** to describe the credential requirements for a protected route
 - **OpenID for Verifiable Presentations (OpenID4VP)** for the Agent-created presentation request
 - **OAuth 2.0** for optional exchange of a verified presentation for an access token
@@ -38,10 +41,6 @@ This document defines the x401 payload, processing rules, interoperability requi
 ::: note Protocol Boundary
 x401 defines proof requirement semantics only. When payment is required, implementations still use `402 Payment Required` and a separate payment protocol.
 :::
-
-## Status of This Document
-
-This is a draft specification. It is provided in a style intended to be similar to DIF single-file specifications.
 
 ## Introduction
 
@@ -59,7 +58,7 @@ At the same time, OpenID4VP, DCQL, OAuth, and OpenID4VCI define interoperable me
 x401 fills that gap by defining an HTTP-native wrapper that:
 
 - signals proof requirements at the protected route
-- carries the x401 payload as a base64url value in the `WWW-Authenticate` response header
+- carries x401 proof objects as base64url values in dedicated proof header fields
 - carries DCQL requirements for the route
 - carries a Verifier Challenge value composed from the Verifier's identifier and a cryptographic nonce
 - gives the Agent the information required to create a valid OpenID4VP Authorization Request for its Wallet
@@ -126,27 +125,33 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ A verifier-controlled DIF Credential Trust Establishment document that identifies the issuers, authorities, roles, activities, credential schemas, or credential types the Verifier accepts for a proof requirement. The same document can also help Agents discover where qualifying credentials may be obtained.
 
 [[def: VP Artifact]]:
-~ A retry artifact containing the Wallet's presentation result and the x401 metadata needed by the Verifier to validate proof fulfillment for an [[ref: Agent Identifier]], encoded for use in the HTTP `Authorization` request header or OAuth token exchange.
+~ A retry artifact containing the Wallet's presentation result and the x401 metadata needed by the Verifier to validate proof fulfillment for an [[ref: Agent Identifier]], encoded for use in a `PROOF-PRESENTATION` request header or OAuth token exchange.
 
 [[def: Verification Token]]:
-~ A verifier-issued, short-lived access token returned after successful proof verification and used by the [[ref: Agent]] on later protected-route requests so that the VP Artifact does not need to be repeated.
+~ A verifier-issued, short-lived access token returned after successful proof verification and used by the [[ref: Agent]] on later protected-route requests so that the VP Artifact does not need to be repeated. A Verification Token can be used as the route's normal `Authorization` token when the deployment supports that model, or carried as an x401 Token Object in `PROOF-PRESENTATION` when the route already uses `Authorization` for existing application authentication.
+
+[[def: x401 Token Object]]:
+~ A JSON object carried as a base64url value in `PROOF-PRESENTATION` to pass a Verification Token without replacing the route's existing `Authorization` credentials.
 
 [[def: x401 Payload]]:
-~ The JSON object defined by this specification, UTF-8 encoded, and carried as a base64url value in the `payload` parameter of the `WWW-Authenticate: x401` response header.
+~ The JSON object defined by this specification, UTF-8 encoded, and carried as a base64url value in the `PROOF-REQUIRED` header field.
+
+[[def: x401 Error Object]]:
+~ A JSON object carried as a base64url value in the `PROOF-RESPONSE` header field to describe why a presented proof failed or could not be processed.
 
 ## Protocol Overview
 
-The x401 protocol is made up of four legs: a Verifier exposes identity proof requirements that gate access to a resource, the Agent turns the requirements into a wallet-facing OpenID4VP request, the Agent submits the Wallet's presentation result back to the Verifier, and the Agent may exchange that proof for a reusable Verification Token. The tabs below summarize each leg and link to the detailed section that defines the processing rules that pertain to them.
+The x401 protocol is made up of four legs: a Verifier exposes identity proof requirements that gate access to a resource, the Agent turns the requirements into a wallet-facing OpenID4VP request, the Agent presents the Wallet's presentation result back to the Verifier, and the Agent may exchange that proof for a reusable Verification Token. The tabs below summarize each leg and link to the detailed section that defines the processing rules that pertain to them.
 
 ::: tabs
 
 :: 1. Gated Resource
 
-The Verifier protects a route by returning `401 Unauthorized` with a `WWW-Authenticate: x401` header. The header carries the base64url-encoded x401 payload that defines the route's proof requirement; see [x401 Gated Resource Configuration](#x401-gated-resource-configuration) for details.
+The Verifier declares a route-scoped proof requirement by returning a `PROOF-REQUIRED` header. The header carries the base64url-encoded x401 payload that defines the route's proof requirement; see [x401 Gated Resource Configuration](#x401-gated-resource-configuration) for details. The response status code describes the overall HTTP response and is not the x401 protocol carrier.
 
 ```http
-HTTP/1.1 401 Unauthorized
-WWW-Authenticate: x401 payload="<base64url-x401-payload>"
+HTTP/1.1 200 OK
+PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
 
@@ -171,9 +176,9 @@ The Agent decodes the x401 payload and creates its own OpenID4VP Authorization R
 }
 ```
 
-:: 3. VP Submission
+:: 3. VP Presentation
 
-After the Wallet returns a presentation result, the Agent packages it as a VP Artifact for protected-route retry. The VP Artifact carries the Agent Identifier, Verifier Challenge, and Wallet-returned proof material; see [Verifiable Presentation Submission](#verifiable-presentation-submission) for details.
+After the Wallet returns a presentation result, the Agent packages it as a VP Artifact for protected-route retry. The VP Artifact carries the Agent Identifier, Verifier Challenge, and Wallet-returned proof material; see [Verifiable Presentation Delivery](#verifiable-presentation-delivery) for details.
 
 ```json
 {
@@ -185,7 +190,7 @@ After the Wallet returns a presentation result, the Agent packages it as a VP Ar
 
 :: 4. Token Acquisition
 
-The Agent can submit the same VP Artifact to the Verifier's OAuth token endpoint to obtain a reusable Verification Token. The token exchange uses fixed x401 token-exchange parameters and then the Agent retries protected routes with the returned Bearer token; see [Access Token Acquisition](#access-token-acquisition) for details.
+The Agent can submit the same VP Artifact to the Verifier's OAuth token endpoint to obtain a reusable Verification Token. The token exchange uses fixed x401 token-exchange parameters and then the Agent retries protected routes with either an upgraded `Authorization` token or a `PROOF-PRESENTATION` proof-satisfaction token object; see [Access Token Acquisition](#access-token-acquisition) for details.
 
 ```http
 POST /oauth/token HTTP/1.1
@@ -205,14 +210,15 @@ In the primary x401 flow, the [[ref: Agent]] is the HTTP caller and is assumed t
 
 1. The [[ref: Agent]] requests a protected route.
 2. The [[ref: Verifier]] determines that proof is required.
-3. The [[ref: Verifier]] returns `401 Unauthorized` with:
-   - `WWW-Authenticate: x401 payload="<base64url-x401-payload>"`
+3. The [[ref: Verifier]] returns an HTTP response with:
+   - `PROOF-REQUIRED: <base64url-x401-payload>`
 4. The [[ref: Agent]] decodes the x401 payload and extracts the OpenID4VP presentation protocol, DCQL Requirement, Verifier Challenge, and OAuth token endpoint.
 5. The [[ref: Agent]] creates a wallet-facing OpenID4VP Presentation Request. The request MUST use the x401 Verifier Challenge as its `nonce` value, MUST include the x401 DCQL Requirement as its `dcql_query`, and MUST identify the Agent as the OpenID4VP client.
 6. The [[ref: Wallet]] returns a presentation result to the [[ref: Agent]].
-7. The [[ref: Agent]] retries the same protected route that produced the x401 proof requirement with either:
-   - a [[ref: VP Artifact]] in the HTTP `Authorization` request header, or
-   - a [[ref: Verification Token]] obtained by exchanging the VP Artifact at the OAuth token endpoint from the x401 payload.
+7. The [[ref: Agent]] retries the same protected route that produced the x401 proof requirement with one of:
+   - a [[ref: VP Artifact]] in a `PROOF-PRESENTATION` request header,
+   - a [[ref: Verification Token]] carried as an x401 Token Object in a `PROOF-PRESENTATION` request header, or
+   - a [[ref: Verification Token]] in the route's normal `Authorization` request header when the deployment uses x401 proof satisfaction to upgrade or replace the route's ordinary authorization credential.
 8. The [[ref: Verifier]] validates the VP Artifact or Verification Token.
 9. If proof is satisfied and payment is not required or is already satisfied, the [[ref: Verifier]] returns the protected resource.
 10. If proof is satisfied but payment remains unsatisfied, the [[ref: Verifier]] returns `402 Payment Required` with payment protocol details. After satisfying payment, the [[ref: Agent]] retries the same route with proof or token material and the payment artifact required by the selected payment protocol.
@@ -224,10 +230,10 @@ sequenceDiagram
     participant Wallet
     participant Payment
     Agent->>Verifier: Request protected route
-    Verifier-->>Agent: 401 + WWW-Authenticate: x401 payload="..."
+    Verifier-->>Agent: HTTP response + PROOF-REQUIRED ...
     Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and DCQL query
     Wallet-->>Agent: Presentation result
-    Agent->>Verifier: Retry same route with VP artifact or token
+    Agent->>Verifier: Retry same route with PROOF-PRESENTATION or Authorization token
     opt Payment required after proof satisfaction
         Verifier-->>Agent: 402 Payment Required
         Agent->>Payment: Complete payment protocol
@@ -247,56 +253,62 @@ sequenceDiagram
     participant Verifier
     participant Wallet
     Agent->>Verifier: Request protected route
-    Verifier-->>Agent: 401 + WWW-Authenticate: x401 payload="..."
+    Verifier-->>Agent: HTTP response + PROOF-REQUIRED ...
     Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and DCQL query
     Wallet-->>Agent: Presentation result
     Agent->>Verifier: OAuth token request with VP artifact
     Verifier-->>Agent: Verification token
-    Agent->>Verifier: Retry same route with Bearer token
+    Agent->>Verifier: Retry same route with Authorization token or PROOF-PRESENTATION token object
     Verifier-->>Agent: Protected resource
 ```
 
-The technical sections that follow are organized by the four main legs of the protocol: x401 gated resource configuration, Agent-generated verifiable presentation, verifiable presentation submission, and access token acquisition.
+The technical sections that follow are organized by the four main legs of the protocol: x401 gated resource configuration, Agent-generated verifiable presentation, verifiable presentation delivery, and access token acquisition.
 
 ## x401 Gated Resource Configuration
 
-The initial leg of the protocol defines how a protected HTTP resource declares what proof is required. The Verifier responds to the original protected-route request with `401 Unauthorized` and a `WWW-Authenticate: x401` header whose `payload` parameter contains the base64url-encoded x401 payload.
+The initial leg of the protocol defines how a protected HTTP resource declares what proof is required. The Verifier responds to the original protected-route request with a `PROOF-REQUIRED` header whose value contains the base64url-encoded x401 payload.
+
+The requirement is route-scoped. If a representation includes gated and ungated material, this version of x401 does not define per-fragment requirements or separate requirement mapping inside the page. Fulfillment of the complete credential demand in the `PROOF-REQUIRED` payload satisfies the route's x401 gate.
 
 ```http
 GET /papers/medical-study-123 HTTP/1.1
 Host: research.example.com
 Accept: application/json
 
-HTTP/1.1 401 Unauthorized
-WWW-Authenticate: x401 payload="<base64url-x401-payload>"
+HTTP/1.1 200 OK
+PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
 
 ### HTTP Semantics
 
-Status Code | Meaning in a x401-capable deployment | Agent expectation
------------ | ------------------------------------ | ----------------
-`401 Unauthorized` | Proof is required or not yet satisfied | Inspect `WWW-Authenticate: x401` and decode the x401 payload
+HTTP status or condition | Meaning in a x401-capable deployment | Agent expectation
+------------------------ | ------------------------------------ | ----------------
+Any response with `PROOF-REQUIRED` | Proof is required, advertised, or not yet satisfied for the route | Decode the x401 payload from the `PROOF-REQUIRED` field value
+Any response with `PROOF-RESPONSE` containing an x401 Error Object | A presented x401 proof failed or could not be processed | Decode the x401 error object and treat the x401 proof branch as failed
+`2xx` with `PROOF-REQUIRED` | The HTTP response is otherwise successful, but the route includes x401-gated material or actions | Process the response normally and fulfill the route-scoped proof requirement when access to the gated material is needed
+`4xx` with `PROOF-REQUIRED` | The route cannot be completed without proof | Fulfill the route-scoped proof requirement before retrying
 `402 Payment Required` | Payment remains unsatisfied | Switch to the payment protocol
-`403 Forbidden` | Proof was presented but policy satisfaction failed | Do not treat this as another proof requirement
 
-#### 401 for Proof
+The x401 proof header fields are the x401 protocol carriers. HTTP status codes describe the overall response and do not, by themselves, define x401 proof state.
 
-A server that requires proof for access to a protected resource MUST return `401 Unauthorized`.
+#### Status Code Independence
 
-The response MUST include a `WWW-Authenticate` header using the `x401` scheme.
+A server that requires proof for access to a protected resource, route, representation, or operation MUST return `PROOF-REQUIRED: <base64url-x401-payload>`.
+
+The response MAY use any HTTP status code appropriate for the whole response. A Verifier can use a successful status code when the response body is still useful without proof, or a client or server error status when the requested operation cannot proceed until proof is satisfied.
 
 Example:
 
 ```http
-HTTP/1.1 401 Unauthorized
-WWW-Authenticate: x401 payload="<base64url-x401-payload>"
+HTTP/1.1 200 OK
+PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
 
-The `payload` parameter MUST contain the base64url-encoded [[ref: x401 Payload]]. An x401 proof requirement response SHOULD NOT require the Agent to parse a response body in order to understand the proof requirement.
+An x401 proof requirement response SHOULD NOT require the Agent to parse a response body in order to understand the proof requirement.
 
-The proof requirement response uses `WWW-Authenticate` because `Authorization` is an HTTP request header. The Agent uses `Authorization` only when retrying the protected route with a [[ref: VP Artifact]] or [[ref: Verification Token]].
+This specification does not define a `WWW-Authenticate` authentication scheme for x401 proof payloads. If a deployment chooses to use `401 Unauthorized` for the overall HTTP response, it remains responsible for any independent HTTP authentication requirements that apply to `401` responses. x401 proof requirements still appear in `PROOF-REQUIRED`, not in `WWW-Authenticate`.
 
 #### 402 for Payment
 
@@ -304,9 +316,9 @@ A server that requires payment MUST use `402 Payment Required` and MUST NOT over
 
 Payment metadata MAY be declared in a x401 payload for informational purposes when payment may also be required, but payment satisfaction itself remains governed by the payment protocol used with `402`.
 
-#### 403 for Failed Policy Satisfaction
+#### x401 Error for Failed Policy Satisfaction
 
-If an Agent submits a proof artifact that is structurally valid but does not satisfy the Verifier's policy, the Verifier SHOULD return `403 Forbidden`.
+If an Agent presents a proof artifact that is structurally valid but does not satisfy the Verifier's policy, the Verifier SHOULD return a `PROOF-RESPONSE: <base64url-x401-error-object>` header. The x401 Error Object is the protocol-specific indication of failure for x401 exchanges. The HTTP response status remains independent and describes the overall response.
 
 Examples include:
 
@@ -317,29 +329,45 @@ Examples include:
 - challenge value does not match the expected verifier identifier and nonce
 - insufficient assurance level
 
-### x401 Proof Requirement Scheme
+### Proof Header Fields
 
-The `WWW-Authenticate` header identifies the presence of an x401 proof requirement. In HTTP terminology the header carries an authentication challenge; this specification uses "x401 proof requirement" for the overall route-gating declaration and reserves [[ref: Verifier Challenge]] for the nonce-bearing `proof.challenge` object.
+The proof header fields carry x401 protocol objects. This specification uses "x401 proof requirement" for the overall route-gating declaration and reserves [[ref: Verifier Challenge]] for the nonce-bearing `proof.challenge` object.
 
 #### Header Syntax
 
-An x401 proof requirement uses the following general form:
+Each x401 proof header field carries exactly one base64url-encoded UTF-8 JSON object. The header field name identifies the protocol leg, so x401 does not use an action keyword inside a shared carrier header.
 
-```http
-WWW-Authenticate: x401 payload="<base64url-x401-payload>"
+Header field names are shown in uppercase for consistency with the examples. As HTTP field names, they are case-insensitive.
+
+```text
+PROOF-REQUIRED: <base64url-json>
+PROOF-PRESENTATION: <base64url-json>
+PROOF-RESPONSE: <base64url-json>
 ```
 
-#### Header Parameters
+The defined x401 proof header fields are:
 
-Name | Definition
----- | ----------
-`payload` | REQUIRED. The base64url-encoded UTF-8 JSON [[ref: x401 Payload]]. The encoded value MUST omit padding. The decoded value MUST be a single JSON object.
+Header field | Direction | Decoded payload
+------------ | --------- | ---------------
+`PROOF-REQUIRED` | Verifier to Agent | [[ref: x401 Payload]]
+`PROOF-PRESENTATION` | Agent to Verifier | [[ref: VP Artifact]] or [[ref: x401 Token Object]]
+`PROOF-RESPONSE` | Verifier to Agent | x401 response information, including [[ref: x401 Error Object]]
 
-Other x401 proof requirement parameters MAY be defined by future versions of this specification. A Verifier MUST NOT place authoritative x401 proof requirement data only in non-`payload` parameters in this version.
+The encoded value MUST be base64url-encoded UTF-8 JSON using the URL and filename safe alphabet defined by RFC 4648 Section 5 without padding. The decoded value MUST be a single JSON object.
+
+When `PROOF-PRESENTATION` carries a VP Artifact, the request is a direct proof presentation. When it carries an x401 Token Object, the request is presenting a reusable proof-satisfaction token issued after prior verification.
+
+`PROOF-RESPONSE` is the Verifier-to-Agent response information channel for x401-specific results and diagnostics. This specification defines the x401 Error Object for failed proof presentation or token processing. Deployments MAY define additional response objects for accepted proof state, token metadata, or other x401-specific return information.
+
+A sender MUST NOT generate more than one field line with the same x401 proof header name in the same HTTP message. A sender MUST NOT combine multiple x401 protocol objects in a single proof header using commas or other list syntax. If a recipient receives multiple field lines for the same proof header, or receives a proof header value containing a comma-separated list of messages, it MUST treat that proof header as invalid.
+
+A response SHOULD NOT contain both `PROOF-REQUIRED` and `PROOF-RESPONSE` unless the response both reports verifier response information and intentionally advertises a fresh proof requirement for a subsequent attempt. A request SHOULD NOT contain more than one `PROOF-PRESENTATION` value.
+
+When browser-based JavaScript needs to read `PROOF-REQUIRED` or `PROOF-RESPONSE` from a cross-origin response, the response needs CORS exposure for those fields. When browser-based JavaScript sends `PROOF-PRESENTATION` cross-origin, the server needs to allow the `PROOF-PRESENTATION` request header through CORS preflight.
 
 ### x401 Payload
 
-A x401 payload is a single JSON object encoded into the `payload` parameter of the `WWW-Authenticate: x401` response header. The payload is base64url-encoded, using the URL and filename safe alphabet defined by RFC 4648 Section 5 without padding, so it can be carried safely as an HTTP authentication parameter.
+A x401 payload is a single JSON object encoded in the `PROOF-REQUIRED` header field.
 
 The payload SHOULD remain compact. Sensitive route state SHOULD be omitted, stored server-side, or carried only inside verifier-protected nonce state.
 
@@ -494,7 +522,7 @@ The Verifier MUST support at least one of the following Verifier Challenge corre
 
 In both models, the nonce segment MUST contain or be bound to at least 128 bits of cryptographic randomness. The Agent treats the nonce segment as opaque and MUST NOT parse it.
 
-When validating a returned VP Artifact or OAuth token exchange request, the Verifier MUST use the nonce segment to recover or authenticate the expected Verifier Challenge context. It MUST reject the submission if the returned challenge value is not exactly the issued or reconstructed challenge value, if the Verifier Challenge is expired, if the nonce is unknown or fails verifier-protected authentication, if the route or method does not match, or if replay policy fails.
+When validating a returned VP Artifact or OAuth token exchange request, the Verifier MUST use the nonce segment to recover or authenticate the expected Verifier Challenge context. It MUST reject the returned artifact if the returned challenge value is not exactly the issued or reconstructed challenge value, if the Verifier Challenge is expired, if the nonce is unknown or fails verifier-protected authentication, if the route or method does not match, or if replay policy fails.
 
 #### Verifier Challenge Format
 
@@ -531,7 +559,7 @@ x401 deployments MAY make the interaction between the protected resource and the
 
 In a stateless deployment:
 
-1. The x401 payload carried in `WWW-Authenticate` contains only information the Agent needs to continue, such as the DCQL Requirement, Verifier Challenge, issuer trust reference, token exchange metadata, and payment hints.
+1. The x401 payload carried in `PROOF-REQUIRED` contains only information the Agent needs to continue, such as the DCQL Requirement, Verifier Challenge, issuer trust reference, token exchange metadata, and payment hints.
 2. The nonce segment of the Verifier Challenge MUST carry or reference the verifier-protected Verifier Challenge state needed to validate a VP Artifact or issue a Verification Token.
 3. A [[ref: Verification Token]], when issued, MUST be verifier-protected and carry or reference the route, policy, Agent binding, expiration, and satisfied requirements needed for later protected-route evaluation.
 4. The protected resource server and token endpoint MAY be separate components if they share the keys, policies, or verification services needed to validate these artifacts.
@@ -605,7 +633,7 @@ x401 stays intentionally narrow. It defines the HTTP proof requirement at the pr
 
 The protocol boundary is:
 
-1. x401 governs the protected-route exchange up to `401 Unauthorized` and the `WWW-Authenticate: x401` header containing the x401 payload.
+1. x401 governs the protected-route exchange that carries the `PROOF-REQUIRED` header containing the x401 payload.
 2. The x401 payload supplies a DCQL Requirement and Verifier Challenge. It is not a complete OpenID4VP Authorization Request and MUST NOT be treated as one.
 3. The Agent creates the wallet-facing Presentation Request as an OpenID4VP Authorization Request.
 4. The Agent's Presentation Request MUST include the exact x401 DCQL Requirement as `dcql_query` and MUST use the exact x401 Verifier Challenge value as `nonce`.
@@ -647,14 +675,14 @@ x401 Agents:
 8. SHOULD use short expiry windows when a signed request object is used.
 9. MAY use `request_uri` or signed request objects for the Agent-created Presentation Request, but those objects are created by the Agent and are not supplied by the x401 payload.
 
-## Verifiable Presentation Submission
+## Verifiable Presentation Delivery
 
-This phase of the protocol defines how the Agent packages the Wallet's presentation result and submits it back to the Verifier. The Agent either retries the protected route directly with a VP Artifact or uses that same VP Artifact in the OAuth token exchange described in the next leg.
+This phase of the protocol defines how the Agent packages the Wallet's presentation result and presents it back to the Verifier. The Agent either retries the protected route directly with a VP Artifact or uses that same VP Artifact in the OAuth token exchange described in the next leg.
 
 ```http
 GET /papers/medical-study-123 HTTP/1.1
 Host: research.example.com
-Authorization: x401 vp="<base64url-vp-artifact-json>"
+PROOF-PRESENTATION: <base64url-vp-artifact-json>
 ```
 
 ### VP Artifact
@@ -684,34 +712,100 @@ Name | Definition
 `presentation_submission` | OPTIONAL. The OpenID4VP presentation submission metadata returned by the Wallet when applicable.
 `state` | OPTIONAL. Agent-generated correlation state returned by the Wallet when applicable.
 
-The Verifier MUST NOT treat the `agent_id`, `challenge`, or `request_id` values inside the VP Artifact as authoritative by themselves. They are carried so the Verifier can correlate the submission with its expected Verifier Challenge context. The Verifier remains responsible for authenticating the Agent Identifier and validating the presentation binding.
+The Verifier MUST NOT treat the `agent_id`, `challenge`, or `request_id` values inside the VP Artifact as authoritative by themselves. They are carried so the Verifier can correlate the presentation with its expected Verifier Challenge context. The Verifier remains responsible for authenticating the Agent Identifier and validating the presentation binding.
 
-### Authorization Request Header
+### x401 Error Object
 
-After receiving an x401 proof requirement and obtaining a presentation result, the Agent retries the protected route using the HTTP `Authorization` request header.
+When a Verifier reports that an x401 proof presentation failed or could not be processed, it returns a `PROOF-RESPONSE` header whose payload is a base64url-encoded x401 Error Object.
 
-When retrying with a [[ref: Verification Token]], the Agent uses the token type returned by the Verifier. The token type defined by this specification is `Bearer`:
+#### General Structure
 
-```http
-Authorization: Bearer <verification-token>
+```json
+{
+  "scheme": "x401",
+  "version": "0.1.0",
+  "error": "invalid_presentation",
+  "error_description": "The presentation did not satisfy the route proof requirement.",
+  "request_id": "proof-template-board-certified-doctor-v1",
+  "challenge": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ"
+}
 ```
 
-When retrying with proof material directly, the Agent uses the `x401` authorization scheme:
+#### Members
 
-```http
-Authorization: x401 vp="<base64url-vp-artifact-json>"
+Name | Definition
+---- | ----------
+`scheme` | REQUIRED. Value MUST be the string `"x401"`.
+`version` | REQUIRED. The x401 error object version.
+`error` | REQUIRED. A verifier-defined error code. The value SHOULD be a short ASCII token suitable for logs and programmatic handling.
+`error_description` | OPTIONAL. Human-readable diagnostic text.
+`error_uri` | OPTIONAL. HTTPS URL identifying documentation for the error.
+`request_id` | OPTIONAL. The x401 `proof.request_id`, when the error can be correlated to a proof template.
+`challenge` | OPTIONAL. The Verifier Challenge value, when the error can be safely correlated to a challenge.
+
+The x401 Error Object describes the x401 proof branch only. The HTTP status code continues to describe the overall response.
+
+### x401 Token Object
+
+When an Agent has a Verification Token and the protected route already uses the `Authorization` request header for existing application authentication, the Agent can pass the Verification Token as an x401 Token Object in a `PROOF-PRESENTATION` header. This allows existing application credentials and x401 proof satisfaction to travel on the same request without overloading `Authorization`.
+
+#### General Structure
+
+```json
+{
+  "scheme": "x401",
+  "version": "0.1.0",
+  "token_type": "Bearer",
+  "access_token": "<x401-verification-token>"
+}
 ```
 
-The `vp` value is the base64url-encoded UTF-8 JSON serialization of the VP Artifact, using the same no-padding encoding as the x401 payload.
+#### Members
 
-A protected route MUST process the supplied value as a proof submission attempt. If verification succeeds, the Verifier MAY return the protected resource directly.
+Name | Definition
+---- | ----------
+`scheme` | REQUIRED. Value MUST be the string `"x401"`.
+`version` | REQUIRED. The x401 token object version.
+`token_type` | REQUIRED. The token type of the supplied Verification Token. For Verification Tokens defined by this specification, the value is `"Bearer"`.
+`access_token` | REQUIRED. The opaque or structured [[ref: Verification Token]] value issued to the [[ref: Agent]].
+
+The x401 Token Object carries proof satisfaction only. It does not replace the route's ordinary authorization credentials unless the deployment explicitly defines the Verification Token as an upgraded or replacement application token.
+
+### Route Retry Headers
+
+After receiving an x401 proof requirement and obtaining a presentation result, the Agent retries the protected route with either direct proof material or a reusable Verification Token.
+
+When retrying with proof material directly, the Agent uses `PROOF-PRESENTATION`:
+
+```http
+PROOF-PRESENTATION: <base64url-vp-artifact-json>
+```
+
+The `PROOF-PRESENTATION` value is the base64url-encoded UTF-8 JSON serialization of the VP Artifact, using the same no-padding encoding as the x401 payload.
+
+When retrying with a [[ref: Verification Token]], the Agent either uses the route's normal `Authorization` request header or carries an x401 Token Object in `PROOF-PRESENTATION`.
+
+A deployment MAY issue a Verification Token that is also the route's ordinary application authorization credential, or it MAY upgrade the caller's existing application access token with x401-specific proof satisfaction metadata. In that case, the Agent sends the token using the normal token type for the route. For Verification Tokens defined by this specification, the token type is `Bearer`:
+
+```http
+Authorization: Bearer <verification-token-or-upgraded-application-token>
+```
+
+If the protected route already uses `Authorization` for existing application authentication and the x401 Verification Token is separate from that application credential, the Agent preserves the existing `Authorization` value and sends the x401 token separately:
+
+```http
+Authorization: Bearer <existing-application-token>
+PROOF-PRESENTATION: <base64url-x401-token-object>
+```
+
+A protected route MUST process the supplied `PROOF-PRESENTATION` value as a proof presentation or proof-token satisfaction attempt. If verification succeeds, the Verifier MAY return the protected resource directly.
 
 ### Agent Processing Rules
 
-An Agent receiving a `401 Unauthorized` response with a `WWW-Authenticate: x401 ...` proof requirement:
+An Agent receiving an HTTP response with a `PROOF-REQUIRED` proof requirement:
 
 1. MUST treat the response as a proof requirement.
-2. MUST extract the `payload` parameter from the `WWW-Authenticate: x401` header and base64url-decode it as a UTF-8 JSON [[ref: x401 Payload]].
+2. MUST extract the `PROOF-REQUIRED` field value and base64url-decode it as a UTF-8 JSON [[ref: x401 Payload]].
 3. MUST validate the decoded payload structure and process the `proof` object.
 4. MUST verify that `proof.presentation_protocol` is `openid4vp`.
 5. MUST create a wallet-facing OpenID4VP Presentation Request that includes the x401 `proof.dcql_query` as `dcql_query`.
@@ -721,18 +815,20 @@ An Agent receiving a `401 Unauthorized` response with a `WWW-Authenticate: x401 
 9. MUST NOT treat any Agent-side interpretation of the Issuer Trust List as proof of verifier acceptance.
 10. MUST send the OpenID4VP Presentation Request to a Wallet or local presentation subsystem to fulfill the proof requirement.
 11. MUST package the Wallet's presentation result as a VP Artifact.
-12. MUST retry the same route that produced the x401 proof requirement with either:
-    - a VP Artifact in the `Authorization` request header, or
-    - a Verification Token obtained from the OAuth token endpoint in `proof.oauth.token_endpoint`.
-13. MUST send a VP Artifact or Verification Token in the `Authorization` request header when retrying the protected route.
+12. MUST retry the same route that produced the x401 proof requirement with one of:
+    - a VP Artifact in a `PROOF-PRESENTATION` request header,
+    - a Verification Token carried as an x401 Token Object in a `PROOF-PRESENTATION` request header, or
+    - a Verification Token in the route's normal `Authorization` request header when the deployment specifies that the token is an upgraded or replacement application authorization credential.
+13. MUST NOT replace an existing application `Authorization` credential with an x401 Verification Token unless the deployment explicitly defines the returned token as valid for that route's ordinary authorization processing.
+14. MUST treat a `PROOF-RESPONSE` carrying an x401 Error Object as an x401 proof failure for the route-scoped proof attempt, regardless of the HTTP status code.
 
 ### Verifier Processing Rules
 
 A Verifier implementing x401:
 
-1. MUST return `401 Unauthorized` when proof is required and unsatisfied.
-2. MUST include `WWW-Authenticate: x401 ...`.
-3. MUST include a valid base64url-encoded x401 payload in the `payload` parameter of the `WWW-Authenticate: x401` header.
+1. MUST include `PROOF-REQUIRED: <base64url-x401-payload>` when proof is required or advertised.
+2. MUST include a valid base64url-encoded x401 payload in `PROOF-REQUIRED`.
+3. MUST use an HTTP status code appropriate for the overall response and MUST NOT rely on the status code alone to convey x401 proof state.
 4. MUST set `proof.presentation_protocol` to `openid4vp`.
 5. MUST include a DCQL Requirement in `proof.dcql_query`.
 6. MUST include a Verifier Challenge in `proof.challenge`.
@@ -742,11 +838,12 @@ A Verifier implementing x401:
 10. MUST bind the Verifier Challenge to the route, method, policy, expiration, and expected nonce, and MUST either store or reconstruct enough Verifier Challenge context to recognize the challenge value on return.
 11. MUST validate VP Artifacts according to the proof validation rules in this specification and the credential format rules it relies upon.
 12. MUST evaluate issuer trust, status, revocation, and policy constraints independently of any Agent-side interpretation of the Issuer Trust List.
-13. MUST accept a VP Artifact in the `Authorization` request header for protected-route retry.
-14. MAY issue a Verification Token through the OAuth token endpoint after validating the submitted VP Artifact.
-15. MUST validate Verification Tokens on protected-route retry according to token scope, audience, expiration, Agent binding, and satisfied requirement metadata.
-16. SHOULD return `403 Forbidden` if proof is presented but policy satisfaction fails.
-17. MUST use `402 Payment Required` separately if payment is required and remains unsatisfied.
+13. MUST accept a VP Artifact in a `PROOF-PRESENTATION` request header for protected-route retry.
+14. MAY issue a Verification Token through the OAuth token endpoint after validating the presented VP Artifact.
+15. MUST validate Verification Tokens on protected-route retry according to token scope, audience, expiration, Agent binding, and satisfied requirement metadata, whether the token arrives in `Authorization` or as an x401 Token Object in `PROOF-PRESENTATION`.
+16. MUST bind any Verification Token carried in `PROOF-PRESENTATION` to the existing application caller, credential, client, key, or Agent Identifier required by the protected route when an `Authorization` header is also present.
+17. SHOULD return `PROOF-RESPONSE: <base64url-x401-error-object>` if proof is presented but policy satisfaction fails or the presentation or token cannot be processed.
+18. MUST use `402 Payment Required` separately if payment is required and remains unsatisfied.
 
 ### Proof Validation
 
@@ -756,7 +853,7 @@ The Verifier MUST:
 
 1. recover the expected Verifier Challenge context, including route, method, policy, DCQL Requirement, Verifier identifier, nonce, challenge value, expiration, Agent Identifier rules, and replay requirements;
 2. determine the Agent Identifier for the HTTP caller using the route's accepted Agent Identifier policy;
-3. reject the submission if it cannot bind the HTTP caller to an Agent Identifier acceptable for the route;
+3. reject the presentation if it cannot bind the HTTP caller to an Agent Identifier acceptable for the route;
 4. verify that the VP Artifact's `challenge` exactly matches the issued or reconstructed Verifier Challenge;
 5. verify that the Wallet's presentation proof is cryptographically protected according to the credential and presentation formats in use;
 6. verify that the presentation is bound to the authenticated Agent Identifier as its audience, client, or intended target;
@@ -769,7 +866,7 @@ The Verifier MUST NOT accept a presentation that is bound only to the Verifier u
 
 ## Access Token Acquisition
 
-This optional leg of the protocol defines the optional exchange of a verified VP Artifact for a reusable Verification Token. The Agent submits the VP Artifact to the OAuth token endpoint from the x401 payload using OAuth 2.0 Token Exchange, then retries protected routes with the returned Bearer token.
+This optional leg of the protocol defines the optional exchange of a verified VP Artifact for a reusable Verification Token. The Agent submits the VP Artifact to the OAuth token endpoint from the x401 payload using OAuth 2.0 Token Exchange, then retries protected routes with the returned token either as the route's normal authorization credential or as an x401 proof-satisfaction token object in `PROOF-PRESENTATION`.
 
 ```http
 POST /oauth/token HTTP/1.1
@@ -855,6 +952,25 @@ Name | Definition
 `scope` | OPTIONAL. OAuth scope string representing access authorized by the token.
 `x401` | RECOMMENDED. Object containing x401-specific token metadata that helps the Agent and Verifier understand what proof requirements were satisfied.
 
+#### Verification Token Retry Placement
+
+A Verification Token can be placed in either `Authorization` or `PROOF-PRESENTATION`, depending on how the deployment composes x401 with existing application authorization.
+
+If the Verifier, authorization server, and protected application are integrated, the token endpoint MAY issue a token that is accepted as the route's normal application authorization credential. This can be a new token or an upgraded version of an existing application token that includes x401-specific proof satisfaction metadata. In that model, the Agent sends the returned token through the normal authorization mechanism for the route:
+
+```http
+Authorization: Bearer <verification-token-or-upgraded-application-token>
+```
+
+If the protected route already requires an application token in `Authorization`, and the x401 Verification Token is separate from that application token, the Agent SHOULD preserve the existing `Authorization` value and send the Verification Token as an x401 Token Object in `PROOF-PRESENTATION`:
+
+```http
+Authorization: Bearer <existing-application-token>
+PROOF-PRESENTATION: <base64url-x401-token-object>
+```
+
+When processing a `PROOF-PRESENTATION` value that carries an x401 Token Object, the Verifier MUST decode the x401 Token Object, validate the contained Verification Token, and evaluate whether the token satisfies the route's x401 proof requirement. If an `Authorization` header is also present, the Verifier MUST ensure that the application credential and the x401 Verification Token are bound to the same Agent Identifier, client, subject, proof-of-possession key, certificate, or other verifier-accepted caller binding for the route. A Verifier MUST reject a request that combines an application credential and x401 Verification Token that cannot be safely bound to the same accepted caller context.
+
 #### Verification Token Contents
 
 A [[ref: Verification Token]] records the Verifier's decision that a presentation satisfied an x401 proof requirement. It is not a credential, payment artifact, or new issuer attestation about the credential subject.
@@ -910,8 +1026,8 @@ Host: research.example.com
 #### Response
 
 ```http
-HTTP/1.1 401 Unauthorized
-WWW-Authenticate: x401 payload="<base64url-x401-payload>"
+HTTP/1.1 200 OK
+PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
 
@@ -993,10 +1109,20 @@ The Agent creates an OpenID4VP Authorization Request. The fragment below shows t
 ```http
 GET /papers/medical-study-123 HTTP/1.1
 Host: research.example.com
-Authorization: x401 vp="<base64url-vp-artifact-json>"
+PROOF-PRESENTATION: <base64url-vp-artifact-json>
 ```
 
 The decoded VP Artifact contains the Wallet's `vp_token`, the Agent Identifier, and the x401 Verifier Challenge correlation values.
+
+#### Failed Retry With x401 Error
+
+```http
+HTTP/1.1 200 OK
+PROOF-RESPONSE: <base64url-x401-error-object>
+Cache-Control: no-store
+```
+
+The decoded x401 Error Object describes the failed proof presentation. The `200 OK` status in this example means the overall representation was returned successfully; the `PROOF-RESPONSE` field means the x401 proof branch failed.
 
 ### Example 2: OAuth Token Exchange
 
@@ -1035,12 +1161,21 @@ If verification succeeds, the token endpoint returns:
 }
 ```
 
-The Agent retries the original protected route with the token:
+If the returned token is an upgraded or replacement application authorization credential, the Agent retries the original protected route with the token in `Authorization`:
 
 ```http
 GET /papers/medical-study-123 HTTP/1.1
 Host: research.example.com
 Authorization: Bearer eyJhbGciOi...
+```
+
+If the application already requires an existing `Authorization` token and the x401 Verification Token is separate, the Agent preserves the application token and carries the x401 Verification Token as an x401 Token Object in `PROOF-PRESENTATION`:
+
+```http
+GET /papers/medical-study-123 HTTP/1.1
+Host: research.example.com
+Authorization: Bearer <existing-application-token>
+PROOF-PRESENTATION: <base64url-x401-token-object>
 ```
 
 ## Composable Agent and Entity Identification
@@ -1059,7 +1194,7 @@ These mechanisms compose cleanly with x401 when they:
 
 Web Bot Auth is a natural option for adding request-bound identification to x401. A calling Agent can sign the initial protected-route request, the retry request carrying a VP Artifact or Verification Token, and the OAuth token exchange request using HTTP Message Signatures. The Agent can also use the `Signature-Agent` header to point the Verifier to an HTTP Message Signatures key directory.
 
-When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `Authorization` header when retrying with x401 or token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
+When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `PROOF-PRESENTATION` header when retrying with direct proof or proof-token material, the `Authorization` header when retrying with application or upgraded token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
 
 A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the x401 Verifier Challenge, Wallet presentation binding, DCQL satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the DCQL Requirement, or prove end-user delegation.
 
@@ -1107,9 +1242,11 @@ Acquisition hints MUST NOT be treated as sufficient trust material. Verifiers MU
 
 When a x401 payload includes `proof.issuers.trust_establishment_url`, that URL identifies the DIF Credential Trust Establishment document for the proof requirement. The document can help Agents and Wallets choose likely acceptable credentials, but it does not replace verifier-side enforcement. The Verifier MUST independently validate that presented credentials were issued by parties approved under the applicable Issuer Trust List or by the Verifier's internal issuer policy when no list is disclosed.
 
-### Proof Submission
+### Proof Presentation and Token Retry
 
 Verifiers SHOULD prefer Verification Token retry in multi-step flows to avoid repeatedly transmitting large VP Artifacts. Verifiers that accept direct VP retry SHOULD consider header size limits and SHOULD use compact or referenced proof formats where possible.
+
+Responses carrying fresh `PROOF-REQUIRED` challenge material or `PROOF-RESPONSE` diagnostics SHOULD use `Cache-Control: no-store` unless the deployment has explicitly made the x401 payload safe to cache. Responses whose selected representation varies based on a `PROOF-PRESENTATION` request header SHOULD use `Vary: PROOF-PRESENTATION` or stronger cache controls.
 
 The x401 payload is visible to the Agent and to intermediaries that can observe decrypted HTTP traffic. Sensitive Verifier Challenge state SHOULD be omitted, stored server-side, or placed only in verifier-protected nonce state.
 
@@ -1143,30 +1280,35 @@ This draft does not yet request any IANA registrations.
 
 A conforming x401 Verifier:
 
-- returns `401 Unauthorized` when proof is required and unsatisfied
-- includes `WWW-Authenticate: x401 payload="..."`
-- returns a valid base64url-encoded x401 payload in the `WWW-Authenticate` header
+- includes `PROOF-REQUIRED: <base64url-x401-payload>` when proof is required or advertised
+- treats the HTTP status code as the overall response status, not as the x401 protocol carrier
+- returns a valid base64url-encoded x401 payload in `PROOF-REQUIRED`
 - sets `proof.presentation_protocol` to `openid4vp`
 - includes DCQL requirements rather than a fully composed OpenID4VP Authorization Request
 - includes a Verifier Challenge composed from its verifier identifier and a fresh cryptographic nonce
 - includes an OAuth token endpoint for VP Artifact token exchange
 - validates VP Artifacts for Agent client binding, Verifier Challenge correctness, DCQL satisfaction, issuer trust, status, revocation, and route policy
-- accepts VP Artifacts in the `Authorization` header
+- accepts VP Artifacts in `PROOF-PRESENTATION: <base64url-vp-artifact-json>`
+- accepts Verification Tokens as x401 Token Objects in `PROOF-PRESENTATION: <base64url-x401-token-object>` when x401 proof satisfaction is separate from existing application authorization
+- binds x401 Verification Tokens to the same caller context as any existing application authorization credential present on the request
+- returns `PROOF-RESPONSE: <base64url-x401-error-object>` when reporting x401 proof presentation or token errors
 - issues Verification Tokens to the Agent when token exchange is used
 - optionally includes a DIF Credential Trust Establishment URL for issuer trust and acquisition guidance
 - keeps payment separate under `402 Payment Required`
 
 A conforming x401 Agent:
 
-- recognizes `WWW-Authenticate: x401`
-- decodes and processes the x401 payload from the `payload` header parameter
+- recognizes `PROOF-REQUIRED`
+- decodes and processes the x401 payload from the `PROOF-REQUIRED` field value
 - requires `proof.presentation_protocol` to be `openid4vp`
 - creates its own wallet-facing OpenID4VP Presentation Request
 - uses the x401 Verifier Challenge as the Presentation Request `nonce`
 - includes the x401 DCQL Requirement as the Presentation Request `dcql_query`
 - identifies itself as the OpenID4VP client for the Wallet presentation
 - packages the Wallet result as a VP Artifact
-- retries the same protected route that produced the x401 proof requirement with a VP Artifact or Verification Token
+- retries the same protected route that produced the x401 proof requirement with `PROOF-PRESENTATION` carrying a VP Artifact, `PROOF-PRESENTATION` carrying an x401 Token Object, or a deployment-defined upgraded `Authorization` token
+- preserves existing application `Authorization` credentials when carrying a separate x401 Verification Token as an x401 Token Object in `PROOF-PRESENTATION`
+- recognizes x401 Error Objects in `PROOF-RESPONSE` as x401 proof failures regardless of the HTTP status code
 - treats Issuer Trust List interpretation as advisory until the Verifier validates the presentation
 - supports separate handling of `402 Payment Required`
 
@@ -1253,10 +1395,10 @@ Future work should define when stronger agent authentication is mandatory, how a
 }
 ```
 
-The JSON object above is carried in the `WWW-Authenticate` header as:
+The JSON object above is carried in the `PROOF-REQUIRED` header as:
 
 ```http
-WWW-Authenticate: x401 payload="<base64url-minimal-x401-payload>"
+PROOF-REQUIRED: <base64url-minimal-x401-payload>
 ```
 :::
 
