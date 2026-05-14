@@ -150,7 +150,7 @@ The x401 protocol is made up of four legs: a Verifier exposes identity proof req
 The Verifier declares a route-scoped proof requirement by returning a `PROOF-REQUIRED` header. The header carries the base64url-encoded x401 payload that defines the route's proof requirement; see [x401 Gated Resource Configuration](#x401-gated-resource-configuration) for details. The response status code describes the overall HTTP response and is not the x401 protocol carrier.
 
 ```http
-HTTP/1.1 200 OK
+HTTP/1.1 401 Unauthorized
 PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
@@ -275,7 +275,7 @@ GET /papers/medical-study-123 HTTP/1.1
 Host: research.example.com
 Accept: application/json
 
-HTTP/1.1 200 OK
+HTTP/1.1 401 Unauthorized
 PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
@@ -1026,7 +1026,7 @@ Host: research.example.com
 #### Response
 
 ```http
-HTTP/1.1 200 OK
+HTTP/1.1 401 Unauthorized
 PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
@@ -1117,12 +1117,12 @@ The decoded VP Artifact contains the Wallet's `vp_token`, the Agent Identifier, 
 #### Failed Retry With x401 Error
 
 ```http
-HTTP/1.1 200 OK
+HTTP/1.1 401 Unauthorized
 PROOF-RESPONSE: <base64url-x401-error-object>
 Cache-Control: no-store
 ```
 
-The decoded x401 Error Object describes the failed proof presentation. The `200 OK` status in this example means the overall representation was returned successfully; the `PROOF-RESPONSE` field means the x401 proof branch failed.
+The decoded x401 Error Object describes the failed proof presentation. The `401 Unauthorized` status in this example means the route was not completed because the x401 proof branch failed.
 
 ### Example 2: OAuth Token Exchange
 
