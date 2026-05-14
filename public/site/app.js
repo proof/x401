@@ -27,53 +27,56 @@ const FLOW_STEPS = [
     ],
   },
   {
-    shortTitle: "Hand to wallet",
-    title: "The OIDC4VP request is handed to a wallet",
+    shortTitle: "Build wallet request",
+    title: "The caller builds the OIDC4VP request",
     iconLabel: "VP",
     description:
-      "The client hands the embedded request or request_uri to a wallet-capable component that can satisfy the verifier's policy.",
+      "The caller turns the decoded x401 payload into a wallet-facing OIDC4VP request using the supplied DCQL query and challenge.",
     copy:
-      "<strong>3.</strong> The caller hands the embedded or referenced <strong>OIDC4VP</strong> request to a wallet-capable component for fulfillment.",
+      "<strong>3.</strong> The caller creates an <strong>OIDC4VP</strong> request from the decoded x401 payload and hands it to a wallet-capable component.",
     from: "holder",
     to: "wallet",
-    sequenceLines: ["holder->>wallet: Hand off the OIDC4VP request"],
+    sequenceLines: ["holder->>wallet: Agent-created OIDC4VP request"],
   },
   {
     shortTitle: "Present proof",
-    title: "Wallet satisfies the proof request",
-    iconLabel: "SUB",
+    title: "Wallet returns the presentation to the caller",
+    iconLabel: "VP",
     description:
-      "The wallet completes the standard OIDC4VP response flow and returns the presentation to the verifier.",
+      "The wallet completes the OIDC4VP response flow and returns the presentation result to the caller.",
     copy:
-      "<strong>4.</strong> The wallet fulfills the proof request using standard <strong>OIDC4VP</strong> response handling and presents the result to the verifier.",
+      "<strong>4.</strong> The wallet fulfills the proof request using standard <strong>OIDC4VP</strong> response handling and returns the result to the caller.",
     from: "wallet",
-    to: "verifier",
-    sequenceLines: ["wallet->>verifier: Present VP response"],
+    to: "holder",
+    sequenceLines: ["wallet-->>holder: VP response"],
   },
   {
-    shortTitle: "Issue receipt",
-    title: "Verifier issues the retry artifact",
+    shortTitle: "Present or token",
+    title: "Caller presents proof to the Verifier",
     iconLabel: "OK",
     description:
-      "After validation, the verifier can mint a receipt, token, or accepted-proof state for the original route to consume.",
+      "The caller retries with X401: present or exchanges the same VP Artifact for a reusable Verification Token.",
     copy:
-      "<strong>5.</strong> After validation, the verifier returns a <strong>retry artifact</strong>, accepted-proof state, or equivalent signal for the original route.",
-    from: "verifier",
-    to: "holder",
-    sequenceLines: ["verifier-->>holder: Return verifier receipt or accepted state"],
+      "<strong>5.</strong> The caller packages the wallet result as a <strong>VP Artifact</strong> and presents it with <strong>X401: present</strong>, or uses it in the OAuth token exchange.",
+    from: "holder",
+    to: "verifier",
+    sequenceLines: [
+      "holder->>verifier: X401: present or OAuth token exchange",
+      "verifier-->>holder: Protected resource, Verification Token, or X401: error",
+    ],
   },
   {
     shortTitle: "Retry route",
     title: "Holder retries and access is granted",
     iconLabel: "200",
     description:
-      "The caller retries the protected route with the expected proof artifact. If payment is still due, the flow can continue separately under HTTP 402.",
+      "The caller retries the protected route with X401 proof material, X401 token material, or an upgraded Authorization token. If payment is still due, the flow can continue separately under HTTP 402.",
     copy:
-      "<strong>6.</strong> The caller retries the route with the expected artifact and gets the resource. If payment still remains, the verifier can continue under <strong>402</strong> without overloading proof semantics.",
+      "<strong>6.</strong> The caller retries the route with <strong>X401: present</strong>, <strong>X401: token</strong>, or an upgraded <strong>Authorization</strong> token. If payment still remains, the verifier can continue under <strong>402</strong> without overloading proof semantics.",
     from: "holder",
     to: "verifier",
     sequenceLines: [
-      "holder->>verifier: Retry with proof artifact",
+      "holder->>verifier: Retry with X401 present, X401 token, or Authorization token",
       "verifier-->>holder: 200 protected resource",
     ],
   },
