@@ -26,13 +26,13 @@ x401 uses:
 - the **`PROOF-PRESENTATION` HTTP header field** to carry proof presentations or reusable proof-satisfaction tokens
 - the **`PROOF-RESPONSE` HTTP header field** to carry verifier response information, including x401 proof errors
 - **HTTP status codes** to express the overall response semantics independently of x401 proof state
-- **Digital Credentials Query Language (DCQL)** to describe the credential requirements for a protected route
+- **Digital Credentials Query Language (DCQL)**, directly or through OpenID4VP `scope` aliases, to describe the credential requirements for a protected route
 - **OpenID for Verifiable Presentations (OpenID4VP)** for the Agent-created presentation request
 - **OAuth 2.0** for optional exchange of a verified presentation for an access token
 - **DIF Credential Trust Establishment** for verifier-approved issuer policy and non-authoritative acquisition guidance
 - **OpenID for Verifiable Credential Issuance (OpenID4VCI)** for resolving credential issuer metadata when the referenced trust document identifies OpenID4VCI issuers
 
-The x401 payload is not a fully composed OpenID4VP Authorization Request. The Verifier returns the presentation protocol, DCQL requirements, Verifier Challenge value, issuer trust reference, and OAuth token exchange metadata the Agent needs in order to create its own OpenID4VP Authorization Request for a Wallet.
+The x401 payload is not a fully composed OpenID4VP Authorization Request. The Verifier returns the presentation protocol, credential query requirement, Verifier Challenge value, issuer trust reference, and OAuth token exchange metadata the Agent needs in order to create its own OpenID4VP Authorization Request for a Wallet.
 
 x401 is intentionally separate from payment protocols. When payment is required, it MUST be handled with **HTTP 402 Payment Required** and an appropriate payment protocol. x401 MUST NOT redefine payment semantics.
 
@@ -59,14 +59,14 @@ x401 fills that gap by defining an HTTP-native wrapper that:
 
 - signals proof requirements at the protected route
 - carries x401 proof objects as base64url values in dedicated proof header fields
-- carries DCQL requirements for the route
+- carries a credential query requirement for the route, expressed as either a DCQL query or an OpenID4VP `scope` value that represents a DCQL query
 - carries a Verifier Challenge value composed from the Verifier's identifier and a cryptographic nonce
 - gives the Agent the information required to create a valid OpenID4VP Authorization Request for its Wallet
 - includes OAuth token exchange metadata for Agents that want a reusable access token after proving
 - optionally includes a DIF Credential Trust Establishment URL that can help Agents discover acceptable credential issuers
 - composes with, but does not subsume, payment protocols
 
-In the typical flow, an [[ref: Agent]] receives an x401 proof requirement from a [[ref: Verifier]], creates a wallet-facing [[ref: Presentation Request]] that includes the Verifier's [[ref: DCQL Requirement]] and [[ref: Verifier Challenge]], receives a verifiable presentation from a [[ref: Wallet]], and retries the original protected route. An [[ref: Issuer Trust List]] can help the Agent discover credentials or issuers, but the Verifier remains authoritative for issuer trust enforcement.
+In the typical flow, an [[ref: Agent]] receives an x401 proof requirement from a [[ref: Verifier]], creates a wallet-facing [[ref: Presentation Request]] that includes the Verifier's [[ref: Credential Query Requirement]] and [[ref: Verifier Challenge]], receives a verifiable presentation from a [[ref: Wallet]], and retries the original protected route. An [[ref: Issuer Trust List]] can help the Agent discover credentials or issuers, but the Verifier remains authoritative for issuer trust enforcement.
 
 ## Design Goals
 
@@ -75,7 +75,7 @@ The goals of x401 are:
 1. Define a route-scoped proof requirement for HTTP resources.
 2. Allow Verifiers to send proof requirements without composing the Agent's OpenID4VP Authorization Request.
 3. Require the Agent to bind the wallet presentation to its own identifier while preserving a verifier-originated Verifier Challenge.
-4. Reuse DCQL, OpenID4VP, OAuth, and OpenID4VCI.
+4. Reuse OpenID4VP credential query mechanisms, DCQL, OAuth, and OpenID4VCI.
 5. Remain separate from payment semantics.
 6. Allow issuer discovery by reference to verifier trust policy without listing issuers inline in the x401 payload.
 7. Support stateless verifier deployments by allowing Verifier Challenge correlation context to be encoded in verifier-protected nonce values.
@@ -113,10 +113,16 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ Software capable of receiving an OpenID4VP presentation request from an Agent and returning a verifiable presentation result authorized by a [[ref: Holder]].
 
 [[def: Presentation Request]]:
-~ An OpenID4VP Authorization Request created by the Agent. It includes the [[ref: DCQL Requirement]] from the x401 payload as `dcql_query`, uses the [[ref: Verifier Challenge]] value as `nonce`, and identifies the Agent as the OpenID4VP client.
+~ An OpenID4VP Authorization Request created by the Agent. It includes the [[ref: Credential Query Requirement]] from the x401 payload as either `dcql_query` or `scope`, uses the [[ref: Verifier Challenge]] value as `nonce`, and identifies the Agent as the OpenID4VP client.
+
+[[def: Credential Query Requirement]]:
+~ The verifier-supplied credential selection requirement in the x401 payload. It is expressed as exactly one of `proof.dcql_query` or `proof.scope`.
 
 [[def: DCQL Requirement]]:
-~ The DCQL query supplied by the Verifier in the x401 payload that describes the credentials, claims, predicates, or constraints that must be satisfied for the protected route.
+~ A [[ref: Credential Query Requirement]] expressed directly as `proof.dcql_query`.
+
+[[def: Scope Requirement]]:
+~ A [[ref: Credential Query Requirement]] expressed as `proof.scope`. A Scope Requirement is an OpenID4VP `scope` string whose scope value, or values, represent well-defined DCQL queries according to OpenID4VP and an applicable profile, ecosystem, Wallet configuration, or verifier policy recognized by the Wallet and Verifier.
 
 [[def: Verifier Challenge]]:
 ~ A nonce-bearing object generated by the Verifier. It contains a challenge value and expiry. The challenge value is composed from, or bound to, the Verifier's identifier and a fresh cryptographic nonce. The Agent uses this exact value as the OpenID4VP `nonce` in its wallet-facing Presentation Request.
@@ -157,7 +163,7 @@ Cache-Control: no-store
 
 :: 2. Agent Presentation
 
-The Agent decodes the x401 payload and creates its own OpenID4VP Authorization Request for the Wallet. It preserves the Verifier's DCQL requirement and uses the exact Verifier Challenge value as the OpenID4VP `nonce`; see [Agent-Generated Verifiable Presentation](#agent-generated-verifiable-presentation) for details.
+The Agent decodes the x401 payload and creates its own OpenID4VP Authorization Request for the Wallet. It preserves the Verifier's credential query requirement, as either `dcql_query` or `scope`, and uses the exact Verifier Challenge value as the OpenID4VP `nonce`; see [Agent-Generated Verifiable Presentation](#agent-generated-verifiable-presentation) for details.
 
 ```json
 {
@@ -212,8 +218,8 @@ In the primary x401 flow, the [[ref: Agent]] is the HTTP caller and is assumed t
 2. The [[ref: Verifier]] determines that proof is required.
 3. The [[ref: Verifier]] returns an HTTP response with:
    - `PROOF-REQUIRED: <base64url-x401-payload>`
-4. The [[ref: Agent]] decodes the x401 payload and extracts the OpenID4VP presentation protocol, DCQL Requirement, Verifier Challenge, and OAuth token endpoint.
-5. The [[ref: Agent]] creates a wallet-facing OpenID4VP Presentation Request. The request MUST use the x401 Verifier Challenge as its `nonce` value, MUST include the x401 DCQL Requirement as its `dcql_query`, and MUST identify the Agent as the OpenID4VP client.
+4. The [[ref: Agent]] decodes the x401 payload and extracts the OpenID4VP presentation protocol, Credential Query Requirement, Verifier Challenge, and OAuth token endpoint.
+5. The [[ref: Agent]] creates a wallet-facing OpenID4VP Presentation Request. The request MUST use the x401 Verifier Challenge as its `nonce` value, MUST include the x401 Credential Query Requirement using the same OpenID4VP query parameter name supplied by the x401 payload, and MUST identify the Agent as the OpenID4VP client.
 6. The [[ref: Wallet]] returns a presentation result to the [[ref: Agent]].
 7. The [[ref: Agent]] retries the same protected route that produced the x401 proof requirement with one of:
    - a [[ref: VP Artifact]] in a `PROOF-PRESENTATION` request header,
@@ -231,7 +237,7 @@ sequenceDiagram
     participant Payment
     Agent->>Verifier: Request protected route
     Verifier-->>Agent: HTTP response + PROOF-REQUIRED ...
-    Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and DCQL query
+    Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and credential query
     Wallet-->>Agent: Presentation result
     Agent->>Verifier: Retry same route with PROOF-PRESENTATION or Authorization token
     opt Payment required after proof satisfaction
@@ -254,7 +260,7 @@ sequenceDiagram
     participant Wallet
     Agent->>Verifier: Request protected route
     Verifier-->>Agent: HTTP response + PROOF-REQUIRED ...
-    Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and DCQL query
+    Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and credential query
     Wallet-->>Agent: Presentation result
     Agent->>Verifier: OAuth token request with VP artifact
     Verifier-->>Agent: Verification token
@@ -388,7 +394,7 @@ Name | Definition
 ---- | ----------
 `scheme` | REQUIRED. Value MUST be the string `"x401"`.
 `version` | REQUIRED. The x401 payload version.
-`proof` | REQUIRED. Contains the presentation protocol, DCQL Requirement, Verifier Challenge, issuer trust reference, OAuth token exchange metadata, and reusable requirement identifiers.
+`proof` | REQUIRED. Contains the presentation protocol, Credential Query Requirement, Verifier Challenge, issuer trust reference, OAuth token exchange metadata, and reusable requirement identifiers.
 `payment` | OPTIONAL. Describes that payment is additionally required, without replacing `402` semantics.
 
 ### Proof Object
@@ -434,17 +440,45 @@ The proof object gives the Agent the verifier-supplied values it needs to create
 }
 ```
 
+The same proof object can instead use an OpenID4VP `scope` value when an applicable profile, Wallet configuration, or verifier policy recognized by the Wallet and Verifier defines that scope as a credential query:
+
+```json
+{
+  "presentation_protocol": "openid4vp",
+  "scope": "board_certification",
+  "challenge": {
+    "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+    "expires_at": "2026-05-06T18:45:00Z"
+  },
+  "oauth": {
+    "token_endpoint": "https://research.example.com/oauth/token"
+  },
+  "issuers": {
+    "trust_establishment_url": "https://research.example.com/.well-known/x401/trust/board-certified-doctor-v1"
+  },
+  "request_id": "proof-template-board-certified-doctor-v1",
+  "satisfied_requirements": [
+    "urn:example:x401:satisfaction:board-certified-doctor:v1"
+  ]
+}
+```
+
 #### Members
 
 Name | Definition
 ---- | ----------
 `presentation_protocol` | REQUIRED. Identifies the wallet-facing presentation protocol the Agent MUST use. For this version of x401, the value MUST be `"openid4vp"`.
-`dcql_query` | REQUIRED. The DCQL Requirement for the protected route. The Agent MUST include this value as the `dcql_query` in its Presentation Request.
+`dcql_query` | OPTIONAL. The explicit [[ref: DCQL Requirement]] for the protected route. The Agent MUST include this value as the `dcql_query` in its Presentation Request when `dcql_query` is present. Exactly one of `dcql_query` or `scope` MUST be present.
+`scope` | OPTIONAL. The [[ref: Scope Requirement]] for the protected route. The Agent MUST include this value as the OpenID4VP `scope` in its Presentation Request when `scope` is present. Exactly one of `dcql_query` or `scope` MUST be present.
 `challenge` | REQUIRED. The Verifier Challenge object. The Agent MUST include `challenge.value` as the OpenID4VP `nonce` in its Presentation Request.
 `oauth` | REQUIRED. OAuth token exchange metadata. It gives the Agent the endpoint, and any optional resource or audience values, needed to exchange a VP Artifact for a Verification Token.
 `issuers` | OPTIONAL. References verifier-approved issuer trust policy for the proof requirement. When present, this object MUST identify an [[ref: Issuer Trust List]] and MUST NOT list approved issuers inline.
 `request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template. This value can be reused across Verifier Challenge instances and routes when they ask for the same proof requirement.
 `satisfied_requirements` | OPTIONAL. An array of stable verifier-defined identifiers for the reusable proof requirements that will be marked satisfied if this proof is fulfilled.
+
+The proof object MUST contain exactly one Credential Query Requirement: either `dcql_query` or `scope`. It MUST NOT contain both, and it MUST NOT omit both.
+
+When `scope` is used, each scope value MUST be an alias for a well-defined DCQL query in the applicable OpenID4VP profile, ecosystem, Wallet configuration, or verifier policy recognized by the Wallet and Verifier. If a single `scope` string contains multiple scope values, the DCQL Credential Query `id` values and claim `id` values represented by those scope values MUST be unique across the combined query. The Verifier MUST be able to validate the returned credentials against the credential policy represented by the `scope` value and MUST NOT treat the returned `scope` string itself as proof satisfaction.
 
 #### Verifier Challenge Members
 
@@ -507,7 +541,7 @@ The Agent MAY use the Issuer Trust List to select candidate credentials or guide
 
 ### Verifier Challenge Construction and Correlation
 
-When a Verifier creates a Verifier Challenge, it MUST bind the Verifier Challenge instance to the protected resource context needed to evaluate the retry. This context includes the requested method, route or resource identifier, DCQL Requirement, Verifier identifier, cryptographic nonce, expiration time, expected Agent Identifier rules, and accepted retry mechanisms.
+When a Verifier creates a Verifier Challenge, it MUST bind the Verifier Challenge instance to the protected resource context needed to evaluate the retry. This context includes the requested method, route or resource identifier, Credential Query Requirement, Verifier identifier, cryptographic nonce, expiration time, expected Agent Identifier rules, and accepted retry mechanisms.
 
 This binding MAY be stored server-side, but x401 does not require that storage. A Verifier MAY instead encode the binding into the nonce segment as verifier-protected Verifier Challenge state.
 
@@ -517,8 +551,8 @@ A Verifier MUST be able to determine that a returned challenge value is one it i
 
 The Verifier MUST support at least one of the following Verifier Challenge correlation models:
 
-1. **Stored Verifier Challenge state.** The nonce segment is an opaque handle to a Verifier Challenge record stored by the Verifier. The record MUST include or reference the route, method, DCQL Requirement, policy, Verifier identifier, nonce, expiration time, expected Agent Identifier rules, accepted retry mechanisms, and replay status needed to evaluate the retry.
-2. **Verifier-protected nonce state.** The nonce segment is a self-contained or referencing value protected by the Verifier with a signature, MAC, or authenticated encryption. It MUST allow the Verifier to authenticate the returned challenge value and reconstruct the expected route, method, DCQL Requirement, policy, Verifier identifier, nonce, expiration time, expected Agent Identifier rules, and replay requirements.
+1. **Stored Verifier Challenge state.** The nonce segment is an opaque handle to a Verifier Challenge record stored by the Verifier. The record MUST include or reference the route, method, Credential Query Requirement, policy, Verifier identifier, nonce, expiration time, expected Agent Identifier rules, accepted retry mechanisms, and replay status needed to evaluate the retry.
+2. **Verifier-protected nonce state.** The nonce segment is a self-contained or referencing value protected by the Verifier with a signature, MAC, or authenticated encryption. It MUST allow the Verifier to authenticate the returned challenge value and reconstruct the expected route, method, Credential Query Requirement, policy, Verifier identifier, nonce, expiration time, expected Agent Identifier rules, and replay requirements.
 
 In both models, the nonce segment MUST contain or be bound to at least 128 bits of cryptographic randomness. The Agent treats the nonce segment as opaque and MUST NOT parse it.
 
@@ -549,7 +583,7 @@ Prefix | `x401` | REQUIRED. Domain-separates x401 Verifier Challenge values from
 Verifier identifier | `<base64url-utf8-verifier-id>` | REQUIRED. The Verifier identifier encoded as UTF-8 and then base64url without padding. The decoded value is typically an HTTPS origin, domain-based identifier, or DID controlled by the Verifier.
 Nonce | `<nonce>` | REQUIRED. An opaque verifier-generated nonce segment encoded as base64url without padding. It MUST either identify stored Verifier Challenge state or carry verifier-protected Verifier Challenge state. It MUST contain or be bound to at least 128 bits of cryptographic randomness.
 
-The Verifier constructs the entire `value`, including the `x401:` prefix. The encoded verifier identifier and nonce MUST omit padding. The nonce segment MUST let the Verifier triangulate back to the exact requirements presented to the Agent, including route, method, DCQL Requirement, policy, expiration, expected Agent Identifier rules, accepted retry mechanisms, and replay status. The payload does not duplicate the verifier identifier or nonce as separate fields. The Verifier MUST reject a presentation if the challenge value, embedded or expected verifier identifier, nonce, or expiration does not match the Verifier Challenge expected for the protected route.
+The Verifier constructs the entire `value`, including the `x401:` prefix. The encoded verifier identifier and nonce MUST omit padding. The nonce segment MUST let the Verifier triangulate back to the exact requirements presented to the Agent, including route, method, Credential Query Requirement, policy, expiration, expected Agent Identifier rules, accepted retry mechanisms, and replay status. The payload does not duplicate the verifier identifier or nonce as separate fields. The Verifier MUST reject a presentation if the challenge value, embedded or expected verifier identifier, nonce, or expiration does not match the Verifier Challenge expected for the protected route.
 
 The Agent MUST use `proof.challenge.value` exactly as the OpenID4VP `nonce` in its Presentation Request. The Agent MUST NOT add the `x401:` prefix, re-encode, hash, trim, normalize, or transform this value before giving it to the Wallet.
 
@@ -559,7 +593,7 @@ x401 deployments MAY make the interaction between the protected resource and the
 
 In a stateless deployment:
 
-1. The x401 payload carried in `PROOF-REQUIRED` contains only information the Agent needs to continue, such as the DCQL Requirement, Verifier Challenge, issuer trust reference, token exchange metadata, and payment hints.
+1. The x401 payload carried in `PROOF-REQUIRED` contains only information the Agent needs to continue, such as the Credential Query Requirement, Verifier Challenge, issuer trust reference, token exchange metadata, and payment hints.
 2. The nonce segment of the Verifier Challenge MUST carry or reference the verifier-protected Verifier Challenge state needed to validate a VP Artifact or issue a Verification Token.
 3. A [[ref: Verification Token]], when issued, MUST be verifier-protected and carry or reference the route, policy, Agent binding, expiration, and satisfied requirements needed for later protected-route evaluation.
 4. The protected resource server and token endpoint MAY be separate components if they share the keys, policies, or verification services needed to validate these artifacts.
@@ -608,7 +642,7 @@ If proof is accepted but payment is still unsatisfied, the Verifier responds wit
 
 ## Agent-Generated Verifiable Presentation
 
-This leg defines how the Agent turns the x401 payload into a wallet-facing OpenID4VP Authorization Request. The Agent keeps the Verifier's `dcql_query` and Verifier Challenge value intact, uses the Verifier Challenge value as the OpenID4VP `nonce`, and identifies itself as the OpenID4VP client.
+This leg defines how the Agent turns the x401 payload into a wallet-facing OpenID4VP Authorization Request. The Agent keeps the Verifier's Credential Query Requirement and Verifier Challenge value intact, uses the Verifier Challenge value as the OpenID4VP `nonce`, and identifies itself as the OpenID4VP client.
 
 ```json
 {
@@ -627,6 +661,18 @@ This leg defines how the Agent turns the x401 payload into a wallet-facing OpenI
 }
 ```
 
+When the x401 payload contains `proof.scope` instead of `proof.dcql_query`, the Agent uses that value as the OpenID4VP `scope` and does not include `dcql_query`:
+
+```json
+{
+  "response_type": "vp_token",
+  "client_id": "decentralized_identifier:did:web:agent.example",
+  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "scope": "board_certification",
+  "response_uri": "https://agent.example/wallet/callback/7c9e"
+}
+```
+
 ### OpenID4VP Boundary and Reuse
 
 x401 stays intentionally narrow. It defines the HTTP proof requirement at the protected route and the payload that carries proof requirements, Verifier Challenge material, issuer trust references, token exchange metadata, and payment hints. It does not define the Wallet transport or require the Verifier to become the Wallet-facing presentation requester.
@@ -634,9 +680,9 @@ x401 stays intentionally narrow. It defines the HTTP proof requirement at the pr
 The protocol boundary is:
 
 1. x401 governs the protected-route exchange that carries the `PROOF-REQUIRED` header containing the x401 payload.
-2. The x401 payload supplies a DCQL Requirement and Verifier Challenge. It is not a complete OpenID4VP Authorization Request and MUST NOT be treated as one.
+2. The x401 payload supplies a Credential Query Requirement and Verifier Challenge. It is not a complete OpenID4VP Authorization Request and MUST NOT be treated as one.
 3. The Agent creates the wallet-facing Presentation Request as an OpenID4VP Authorization Request.
-4. The Agent's Presentation Request MUST include the exact x401 DCQL Requirement as `dcql_query` and MUST use the exact x401 Verifier Challenge value as `nonce`.
+4. The Agent's Presentation Request MUST include the exact x401 Credential Query Requirement as either `dcql_query` or `scope`, matching the query member present in the x401 payload, and MUST use the exact x401 Verifier Challenge value as `nonce`.
 5. The Agent's Presentation Request MUST identify the Agent as the OpenID4VP client.
 6. x401 resumes when the Agent retries the original protected route with a VP Artifact or Verification Token.
 7. `proof.issuers` can help Agents discover acceptable issuers, but it never delegates verification behavior to the Agent. When the referenced Issuer Trust List identifies OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery.
@@ -650,14 +696,14 @@ The Agent MUST provide the Wallet with a valid OpenID4VP Authorization Request. 
 1. a valid `response_type` for returning a verifiable presentation;
 2. a `client_id` that identifies the Agent Identifier used with the protected-route request;
 3. the exact x401 `proof.challenge.value` as the OpenID4VP `nonce`;
-4. the exact x401 `proof.dcql_query` as the OpenID4VP `dcql_query`;
+4. the exact x401 Credential Query Requirement as the OpenID4VP `dcql_query` or `scope`, matching the query member present in the x401 payload;
 5. a `response_uri` or `redirect_uri` that delivers the Wallet's presentation result to the Agent;
 6. any required `client_metadata`, key material, supported VP formats, encryption preferences, or request signing information required by the Wallet or by the OpenID4VP profile in use;
 7. any Agent-generated `state` value needed for Agent-side correlation.
 
-The x401 payload does not contain a separate `presentation_request` object. The fixed request construction rules above are part of the protocol and are derived from `proof.presentation_protocol`; repeating them in each x401 payload would be redundant. Verifier-specific proof requirements should be expressed through the DCQL Requirement, Verifier Challenge, OAuth metadata, or the Verifier's normal validation policy.
+The x401 payload does not contain a separate `presentation_request` object. The fixed request construction rules above are part of the protocol and are derived from `proof.presentation_protocol`; repeating them in each x401 payload would be redundant. Verifier-specific proof requirements should be expressed through the Credential Query Requirement, Verifier Challenge, OAuth metadata, or the Verifier's normal validation policy.
 
-The Agent MAY add Wallet UX metadata, request signing, encryption parameters, or stricter local handling requirements, but it MUST NOT weaken or omit the x401 DCQL Requirement and MUST NOT alter the x401 Verifier Challenge value.
+The Agent MAY add Wallet UX metadata, request signing, encryption parameters, or stricter local handling requirements, but it MUST NOT weaken or omit the x401 Credential Query Requirement and MUST NOT alter the x401 Verifier Challenge value.
 
 The Verifier's identifier appears inside the Verifier Challenge. The Agent MUST NOT use the Verifier's identifier as the Wallet-facing `client_id` unless the Agent and Verifier are the same entity for that presentation transaction.
 
@@ -669,7 +715,7 @@ x401 Agents:
 2. MUST preserve the exact OpenID4VP parameter names and MUST NOT define x401 aliases for `response_uri`, `redirect_uri`, `response_mode`, `nonce`, `state`, `dcql_query`, `scope`, or `client_metadata`.
 3. MUST include an OpenID4VP `client_id` for the Agent.
 4. MUST include a valid OpenID4VP `response_type` for the chosen flow.
-5. MUST include `dcql_query` containing the x401 `proof.dcql_query`.
+5. MUST include exactly one OpenID4VP credential query parameter: `dcql_query` containing the exact x401 `proof.dcql_query` when present, or `scope` containing the exact x401 `proof.scope` when present.
 6. MUST use `nonce` containing the exact x401 `proof.challenge.value`.
 7. MUST arrange for the Wallet response to return to the Agent.
 8. SHOULD use short expiry windows when a signed request object is used.
@@ -808,7 +854,7 @@ An Agent receiving an HTTP response with a `PROOF-REQUIRED` proof requirement:
 2. MUST extract the `PROOF-REQUIRED` field value and base64url-decode it as a UTF-8 JSON [[ref: x401 Payload]].
 3. MUST validate the decoded payload structure and process the `proof` object.
 4. MUST verify that `proof.presentation_protocol` is `openid4vp`.
-5. MUST create a wallet-facing OpenID4VP Presentation Request that includes the x401 `proof.dcql_query` as `dcql_query`.
+5. MUST create a wallet-facing OpenID4VP Presentation Request that includes the x401 Credential Query Requirement as `dcql_query` when `proof.dcql_query` is present or as `scope` when `proof.scope` is present.
 6. MUST use the exact x401 `proof.challenge.value` as the Presentation Request's `nonce`.
 7. MUST identify itself to the Wallet using an Agent Identifier that can also be bound to the protected-route retry.
 8. MAY use `proof.issuers.trust_establishment_url`, when present, to filter candidate credentials or guide acquisition.
@@ -830,7 +876,7 @@ A Verifier implementing x401:
 2. MUST include a valid base64url-encoded x401 payload in `PROOF-REQUIRED`.
 3. MUST use an HTTP status code appropriate for the overall response and MUST NOT rely on the status code alone to convey x401 proof state.
 4. MUST set `proof.presentation_protocol` to `openid4vp`.
-5. MUST include a DCQL Requirement in `proof.dcql_query`.
+5. MUST include exactly one Credential Query Requirement: either `proof.dcql_query` or `proof.scope`.
 6. MUST include a Verifier Challenge in `proof.challenge`.
 7. MUST include OAuth token exchange metadata in `proof.oauth`.
 8. SHOULD provide `proof.issuers.trust_establishment_url` when issuer approval policy is useful to disclose to Agents.
@@ -851,14 +897,14 @@ When a Verifier receives a VP Artifact directly on a protected-route retry or th
 
 The Verifier MUST:
 
-1. recover the expected Verifier Challenge context, including route, method, policy, DCQL Requirement, Verifier identifier, nonce, challenge value, expiration, Agent Identifier rules, and replay requirements;
+1. recover the expected Verifier Challenge context, including route, method, policy, Credential Query Requirement, Verifier identifier, nonce, challenge value, expiration, Agent Identifier rules, and replay requirements;
 2. determine the Agent Identifier for the HTTP caller using the route's accepted Agent Identifier policy;
 3. reject the presentation if it cannot bind the HTTP caller to an Agent Identifier acceptable for the route;
 4. verify that the VP Artifact's `challenge` exactly matches the issued or reconstructed Verifier Challenge;
 5. verify that the Wallet's presentation proof is cryptographically protected according to the credential and presentation formats in use;
 6. verify that the presentation is bound to the authenticated Agent Identifier as its audience, client, or intended target;
 7. verify that the presentation's OpenID4VP `nonce` equals the exact `proof.challenge.value` from the x401 payload;
-8. verify that the credentials and disclosed claims satisfy the route's DCQL Requirement;
+8. verify that the credentials and disclosed claims satisfy the route's Credential Query Requirement; when the requirement is a `scope`, the Verifier MUST validate against the credential policy represented by that scope, not merely the presence of the scope value;
 9. verify issuer trust, credential status, revocation, expiration, assurance, and any additional route policy;
 10. enforce replay, one-time-use, and expiration requirements for the Verifier Challenge.
 
@@ -906,7 +952,7 @@ The token endpoint MAY require normal OAuth client authentication. If client aut
 The token endpoint MUST process the submitted VP Artifact using the same proof validation rules that apply to direct protected-route retry. In particular, it MUST verify that:
 
 1. the VP is cryptographically valid and bound to the authenticated Agent Identifier;
-2. the credential material satisfies the DCQL Requirement for the requested resource;
+2. the credential material satisfies the Credential Query Requirement for the requested resource;
 3. the Verifier Challenge value contains or resolves to the token endpoint's Verifier identifier and the expected cryptographic nonce;
 4. the Verifier Challenge is not expired, replayed, or outside the route, method, policy, or resource context requested.
 
@@ -996,11 +1042,11 @@ When a Verification Token is represented as a JWT, its exact claim set is deploy
 - `x401_request_id`;
 - `x401_satisfied_requirements`;
 - `x401_challenge` or a digest of the challenge value;
-- `x401_dcql_hash` or a verifier-defined reference to the DCQL Requirement that was satisfied.
+- `x401_query_hash` or a verifier-defined reference to the Credential Query Requirement that was satisfied.
 
 #### Reuse Across Routes
 
-OpenID4VP `state`, presentation `nonce`, and DCQL Credential Query `id` values are useful for request-response correlation and holder binding inside a single presentation transaction. They are not, by themselves, stable semantic identifiers for cross-route token reuse.
+OpenID4VP `state`, presentation `nonce`, DCQL Credential Query `id` values, and OpenID4VP `scope` values are useful for request-response correlation, holder binding, or wallet-facing query selection inside a single presentation transaction. They are not, by themselves, stable semantic identifiers for cross-route token reuse.
 
 x401 uses `proof.request_id` and `proof.satisfied_requirements` for reusable proof semantics. A Verifier MAY accept a Verification Token issued for one route on another route only when:
 
@@ -1104,6 +1150,47 @@ The Agent creates an OpenID4VP Authorization Request. The fragment below shows t
 }
 ```
 
+#### Scope-Based Payload Variant
+
+The same route can express the credential query using `proof.scope` when the value is defined as an OpenID4VP scope query by an applicable profile, Wallet configuration, or verifier policy recognized by the Wallet and Verifier:
+
+```json
+{
+  "scheme": "x401",
+  "version": "0.1.0",
+  "proof": {
+    "presentation_protocol": "openid4vp",
+    "scope": "board_certification",
+    "challenge": {
+      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "expires_at": "2026-05-06T18:45:00Z"
+    },
+    "oauth": {
+      "token_endpoint": "https://research.example.com/oauth/token"
+    },
+    "issuers": {
+      "trust_establishment_url": "https://research.example.com/.well-known/x401/trust/board-certified-doctor-v1"
+    },
+    "request_id": "proof-template-board-certified-doctor-v1",
+    "satisfied_requirements": [
+      "urn:example:x401:satisfaction:board-certified-doctor:v1"
+    ]
+  }
+}
+```
+
+The Agent-created OpenID4VP Authorization Request carries the same `scope` value and omits `dcql_query`:
+
+```json
+{
+  "response_type": "vp_token",
+  "client_id": "decentralized_identifier:did:web:agent.example",
+  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "scope": "board_certification",
+  "response_uri": "https://agent.example/wallet/callback/7c9e"
+}
+```
+
 #### Successful Retry With VP Artifact
 
 ```http
@@ -1187,7 +1274,7 @@ These mechanisms compose cleanly with x401 when they:
 1. produce an authenticated caller identifier the Verifier can map to the route's accepted Agent Identifier policy;
 2. bind that identifier to the HTTP request being evaluated, including the method, target URI or authority, freshness values, and relevant x401 retry material;
 3. can be verified before or during x401 proof validation;
-4. do not alter the x401 DCQL Requirement, Verifier Challenge, VP Artifact, or `402 Payment Required` boundary;
+4. do not alter the x401 Credential Query Requirement, Verifier Challenge, VP Artifact, or `402 Payment Required` boundary;
 5. allow the Verifier to reject mismatches between the authenticated caller, the OpenID4VP `client_id`, the VP Artifact `agent_id`, and any Verification Token holder identity.
 
 ### Web Bot Auth and HTTP Message Signatures
@@ -1196,7 +1283,7 @@ Web Bot Auth is a natural option for adding request-bound identification to x401
 
 When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `PROOF-PRESENTATION` header when retrying with direct proof or proof-token material, the `Authorization` header when retrying with application or upgraded token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
 
-A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the x401 Verifier Challenge, Wallet presentation binding, DCQL satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the DCQL Requirement, or prove end-user delegation.
+A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the x401 Verifier Challenge, Wallet presentation binding, Credential Query Requirement satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the Credential Query Requirement, or prove end-user delegation.
 
 ### OAuth Proof-of-Possession and Client Authentication
 
@@ -1218,7 +1305,7 @@ This wallet-facing binding is necessary but not always sufficient. The Verifier 
 
 ### Delegation and Actor Evidence
 
-Some deployments need to know not only which Agent made the request, but who or what authorized that Agent to act. Delegation evidence can be carried as an additional credential, a VP disclosed through the x401 DCQL Requirement, an OAuth Token Exchange actor chain, a GNAP grant artifact, a Verifiable Intent credential, or another signed mandate or capability.
+Some deployments need to know not only which Agent made the request, but who or what authorized that Agent to act. Delegation evidence can be carried as an additional credential, a VP disclosed through the x401 Credential Query Requirement, an OAuth Token Exchange actor chain, a GNAP grant artifact, a Verifiable Intent credential, or another signed mandate or capability.
 
 Delegation evidence composes best when it is scoped, time-limited, replay-resistant, and bound to the Agent Identifier and requested resource or action. It does not replace caller authentication: the Verifier still needs to know which Agent is presenting the delegation evidence and whether that Agent is the one authorized by the evidence.
 
@@ -1284,10 +1371,10 @@ A conforming x401 Verifier:
 - treats the HTTP status code as the overall response status, not as the x401 protocol carrier
 - returns a valid base64url-encoded x401 payload in `PROOF-REQUIRED`
 - sets `proof.presentation_protocol` to `openid4vp`
-- includes DCQL requirements rather than a fully composed OpenID4VP Authorization Request
+- includes a Credential Query Requirement as either `proof.dcql_query` or `proof.scope` rather than a fully composed OpenID4VP Authorization Request
 - includes a Verifier Challenge composed from its verifier identifier and a fresh cryptographic nonce
 - includes an OAuth token endpoint for VP Artifact token exchange
-- validates VP Artifacts for Agent client binding, Verifier Challenge correctness, DCQL satisfaction, issuer trust, status, revocation, and route policy
+- validates VP Artifacts for Agent client binding, Verifier Challenge correctness, Credential Query Requirement satisfaction, issuer trust, status, revocation, and route policy
 - accepts VP Artifacts in `PROOF-PRESENTATION: <base64url-vp-artifact-json>`
 - accepts Verification Tokens as x401 Token Objects in `PROOF-PRESENTATION: <base64url-x401-token-object>` when x401 proof satisfaction is separate from existing application authorization
 - binds x401 Verification Tokens to the same caller context as any existing application authorization credential present on the request
@@ -1303,7 +1390,7 @@ A conforming x401 Agent:
 - requires `proof.presentation_protocol` to be `openid4vp`
 - creates its own wallet-facing OpenID4VP Presentation Request
 - uses the x401 Verifier Challenge as the Presentation Request `nonce`
-- includes the x401 DCQL Requirement as the Presentation Request `dcql_query`
+- includes the x401 Credential Query Requirement as the Presentation Request `dcql_query` or `scope`, matching the query member present in the x401 payload
 - identifies itself as the OpenID4VP client for the Wallet presentation
 - packages the Wallet result as a VP Artifact
 - retries the same protected route that produced the x401 proof requirement with `PROOF-PRESENTATION` carrying a VP Artifact, `PROOF-PRESENTATION` carrying an x401 Token Object, or a deployment-defined upgraded `Authorization` token
@@ -1395,7 +1482,27 @@ Future work should define when stronger agent authentication is mandatory, how a
 }
 ```
 
-The JSON object above is carried in the `PROOF-REQUIRED` header as:
+The minimal proof object can use `scope` instead of `dcql_query` when the value is a defined OpenID4VP scope query:
+
+```json
+{
+  "scheme": "x401",
+  "version": "0.1.0",
+  "proof": {
+    "presentation_protocol": "openid4vp",
+    "scope": "proof",
+    "challenge": {
+      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "expires_at": "2026-05-06T18:45:00Z"
+    },
+    "oauth": {
+      "token_endpoint": "https://research.example.com/oauth/token"
+    }
+  }
+}
+```
+
+The selected JSON object is carried in the `PROOF-REQUIRED` header as:
 
 ```http
 PROOF-REQUIRED: <base64url-minimal-x401-payload>
