@@ -3,33 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Specification, local demo, and tests for the x401 proof-gated HTTP resource protocol",
+  "description": "Specification and tests for the x401 proof-gated HTTP resource protocol",
   "scripts": {
-    "demo:dev": "tsx watch src/server.ts",
-    "demo:start": "tsx src/server.ts",
     "site:build": "node scripts/build-pages.mjs",
-    "site:watch": "node scripts/site-watch.mjs",
     "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\"",
     "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
     "spec:render": "node scripts/render-spec.mjs",
     "test": "vitest run"
   },
   "dependencies": {
-    "@openid4vc/openid4vci": "^0.4.6",
-    "@openid4vc/openid4vp": "^0.4.6",
-    "did-jwt": "^8.0.18",
-    "did-jwt-vc": "^4.0.16",
-    "did-resolver": "^4.1.0",
-    "express": "^5.2.1",
-    "jose": "^6.2.2",
-    "lit": "^3.3.2",
-    "spec-up": "0.11.3"
+    "spec-up": "0.11.4"
   },
   "devDependencies": {
-    "@types/express": "^5.0.3",
-    "@types/node": "^24.8.1",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3",
     "vitest": "^2.1.9"
   }
 }
