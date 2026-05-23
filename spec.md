@@ -300,7 +300,7 @@ The x401 proof header fields are the x401 protocol carriers. HTTP status codes d
 
 #### Status Code Independence
 
-A server that requires proof for access to a protected resource, route, representation, or operation MUST return `PROOF-REQUIRED: <base64url-x401-payload>`.
+A server that requires proof for access to a protected resource, route, representation, or operation whose response would be changed as a whole by fulfilling a single set of proof requirements MUST return `PROOF-REQUIRED: <base64url-x401-payload>`. The `PROOF-REQUIRED` header is the authoritative carrier for an x401 proof requirement that gates the entire response.
 
 The response MAY use any HTTP status code appropriate for the whole response. A Verifier can use a successful status code when the response body is still useful without proof, or a client or server error status when the requested operation cannot proceed until proof is satisfied.
 
@@ -312,9 +312,9 @@ PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
 
-An x401 proof requirement response SHOULD NOT require the Agent to parse a response body in order to understand the proof requirement.
+An x401 proof requirement carried in `PROOF-REQUIRED` SHOULD NOT require the Agent to parse a response body in order to understand the proof requirement.
 
-This specification does not define a `WWW-Authenticate` authentication scheme for x401 proof payloads. If a deployment chooses to use `401 Unauthorized` for the overall HTTP response, it remains responsible for any independent HTTP authentication requirements that apply to `401` responses. x401 proof requirements still appear in `PROOF-REQUIRED`, not in `WWW-Authenticate`.
+This specification does not carry x401 proof requirements in `WWW-Authenticate`. A protected route may already use that header for an existing HTTP authentication scheme, and combining multiple schemes — whether through comma-separated field values or duplicate header lines — is not consistently or well handled by common HTTP servers, proxies, client libraries, and middleware. Carrying x401 proof requirements in a dedicated `PROOF-REQUIRED` field avoids those interoperability gaps and lets x401 compose with any existing `WWW-Authenticate`-based authentication without contention.
 
 #### 402 for Payment
 
@@ -1309,6 +1309,81 @@ Some deployments need to know not only which Agent made the request, but who or 
 
 Delegation evidence composes best when it is scoped, time-limited, replay-resistant, and bound to the Agent Identifier and requested resource or action. It does not replace caller authentication: the Verifier still needs to know which Agent is presenting the delegation evidence and whether that Agent is the one authorized by the evidence.
 
+## Consumer Client Compatibility
+
+::: note Experimental
+The mechanism in this section is an early experiment in adapting x401 to consumer AI clients and other body-only consumers of HTTP responses. The core x401 protocol — as defined in the preceding sections — is the standard, straightforward way to convey proof requirements: a Verifier returns a `PROOF-REQUIRED` header, and the Agent reads, decodes, and acts on it. The pattern described below is offered as a compatibility supplement for content-bearing responses where header-driven discovery is not viable, and the community is invited to contribute proposals, examples, and reference implementations that improve how x401 reaches these clients.
+:::
+
+x401 is fundamentally an HTTP header protocol. A conforming Verifier signals proof requirements through `PROOF-REQUIRED`, and a conforming Agent processes that header. There is, however, a meaningful class of consumers that today cannot reliably access HTTP response headers on a successful (`2xx`) response with a body. A Verifier that wants its gating requirements to reach those consumers — most notably consumer-facing AI assistants — MAY emit a body-embedded form of the same x401 payload in addition to whatever it carries in `PROOF-REQUIRED`.
+
+### Motivation
+
+Several common client classes do not surface `PROOF-REQUIRED` on a successful response with a body:
+
+- Consumer-facing AI assistants from major platforms typically fetch web content through summarization or browsing tools that surface the response body to the model but drop, hide, or do not propagate the HTTP headers of `2xx` responses. As a result, a proof requirement carried only in `PROOF-REQUIRED` on a successful HTML response will not reach the model.
+- HTML documents rendered in a browser do not expose response headers to inline content unless application code reads them through JavaScript and re-injects them into the DOM.
+- Archival, syndication, and feed-rendering tools often store or render the body without preserving headers.
+
+A Verifier that wants its gating requirements to be discoverable by these consumer AI flows or other body-only clients SHOULD strongly consider embedding the proof requirement in the response body using the form defined below, in addition to setting `PROOF-REQUIRED` on the same response.
+
+### Embedded Proof Requirements in HTML Content
+
+On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof requirement as a single HTML `<data>` element placed in the document body at, near, or wrapping the content to which the requirement applies. The element:
+
+1. MUST use the tag name `data`.
+2. MUST set the `value` attribute to the MIME-type expression `application/json;x401=proof-required`. The `x401` parameter identifies the embedded carrier and signals the role of the element's text content.
+3. MUST set the `hidden` attribute so the element is not visually rendered.
+4. MUST contain a single JSON object as its text content. The JSON object MUST be a valid x401 payload as defined in [x401 Payload](#x401-payload), and MUST include a `$schema` member whose value is the JSON Schema URL for the x401 request object, `https://x401.id/spec/schemas/request.json`. The `$schema` member is an informational marker that allows AI scrapers, content processors, and validators that retain only the JSON object to recognize it as an x401 proof requirement without prior knowledge of the surrounding HTML carrier.
+
+```html
+<data value="application/json;x401=proof-required" hidden>{
+  "$schema": "https://x401.id/spec/schemas/request.json",
+  "scheme": "x401",
+  "version": "0.1.0",
+  "proof": {
+    "presentation_protocol": "openid4vp",
+    "dcql_query": {
+      "credentials": [
+        {
+          "id": "board_certification",
+          "format": "jwt_vc_json",
+          "meta": {
+            "type_values": ["BoardCertificationCredential"]
+          }
+        }
+      ]
+    },
+    "challenge": {
+      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "expires_at": "2026-05-06T18:45:00Z"
+    },
+    "oauth": {
+      "token_endpoint": "https://research.example.com/oauth/token"
+    }
+  }
+}</data>
+```
+
+Unlike the `PROOF-REQUIRED` header value, the embedded form is the unencoded JSON object. The `<data>` element is already a text container, and the `$schema` member is intended to be directly readable by content processors that retain the object.
+
+### Placement and Scope
+
+A `<data>` element placed at the document level applies to the page as a whole and SHOULD be used as a body-side mirror of the route-scoped `PROOF-REQUIRED` header so that header-blind clients can still discover the requirement. A response MAY include multiple `<data value="application/json;x401=proof-required" hidden>` elements when a page surfaces multiple advertised requirements; each element MUST be a complete, independent x401 payload that can be processed without reference to the others.
+
+The embedded form does not extend `PROOF-REQUIRED` semantics. The header continues to carry the route-scoped requirement for the entire response. A `<data>` element is a body-side disclosure intended for clients that cannot consume the header.
+
+### Processing Expectations
+
+A client that processes embedded `<data>` elements:
+
+1. MUST treat the parsed JSON object as an x401 payload subject to the same structural validation, Verifier Challenge handling, and Credential Query Requirement processing defined elsewhere in this specification.
+2. SHOULD treat the embedded requirement as a disclosure of gating intent for the surrounding content and SHOULD complete the protocol by requesting the appropriate protected resource through normal x401 header-driven mechanisms.
+
+A Verifier that emits embedded `<data>` elements MUST still enforce proof on the protected resource through the normal `PROOF-REQUIRED` / `PROOF-PRESENTATION` exchange. Embedding a requirement in HTML is informational disclosure and does not by itself grant access.
+
+The JSON Schema for the embedded request object is included in [Appendix C: x401 Request Object JSON Schema](#appendix-c-x401-request-object-json-schema).
+
 ## Security Considerations
 
 ### Replay Prevention
@@ -1522,3 +1597,143 @@ x401 is best understood as:
 - optionally pointing to OpenID4VCI issuance sources
 - remaining orthogonal to payment protocols
 - composing with `402 Payment Required` rather than absorbing it
+
+## Appendix C: x401 Request Object JSON Schema
+
+The JSON Schema below describes the x401 proof requirement payload. The same schema applies whether the payload is carried as a base64url-encoded value in the `PROOF-REQUIRED` header or embedded in HTML inside a `<data value="application/json;x401=proof-required" hidden>` element. The schema is published at the URL referenced by the `$schema` member of an embedded `<data>` element: `https://x401.id/spec/schemas/request.json`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://x401.id/spec/schemas/request.json",
+  "title": "x401 Proof Requirement Payload",
+  "description": "Schema for an x401 proof requirement payload as defined by the x401 specification.",
+  "type": "object",
+  "required": ["scheme", "version", "proof"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional informational marker. When the payload is embedded in HTML as a <data> element, this SHOULD be set to https://x401.id/spec/schemas/request.json so that content processors can recognize the object as an x401 proof requirement."
+    },
+    "scheme": {
+      "type": "string",
+      "const": "x401",
+      "description": "MUST be the string \"x401\"."
+    },
+    "version": {
+      "type": "string",
+      "description": "The x401 payload version."
+    },
+    "proof": {
+      "type": "object",
+      "required": ["presentation_protocol", "challenge", "oauth"],
+      "properties": {
+        "presentation_protocol": {
+          "type": "string",
+          "const": "openid4vp",
+          "description": "Identifies the wallet-facing presentation protocol. For this version of x401 the value MUST be \"openid4vp\"."
+        },
+        "dcql_query": {
+          "type": "object",
+          "description": "The explicit DCQL Requirement for the protected route. Exactly one of dcql_query or scope MUST be present."
+        },
+        "scope": {
+          "type": "string",
+          "description": "The Scope Requirement for the protected route, expressed as an OpenID4VP scope string. Exactly one of dcql_query or scope MUST be present."
+        },
+        "challenge": {
+          "type": "object",
+          "required": ["value", "expires_at"],
+          "properties": {
+            "value": {
+              "type": "string",
+              "pattern": "^x401:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$",
+              "description": "Verifier Challenge value: the literal prefix \"x401\", the base64url-encoded verifier identifier, and an opaque verifier-generated nonce, separated by colons."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 timestamp after which the Verifier will reject the Verifier Challenge."
+            }
+          },
+          "additionalProperties": false
+        },
+        "oauth": {
+          "type": "object",
+          "required": ["token_endpoint"],
+          "properties": {
+            "token_endpoint": {
+              "type": "string",
+              "format": "uri",
+              "description": "OAuth 2.0 token endpoint where the Agent can exchange a VP Artifact for a Verification Token."
+            },
+            "audience": {
+              "type": "string",
+              "description": "Optional OAuth token exchange audience value the Agent should request."
+            },
+            "resource": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional OAuth token exchange resource value the Agent should request."
+            }
+          },
+          "additionalProperties": false
+        },
+        "issuers": {
+          "type": "object",
+          "required": ["trust_establishment_url"],
+          "properties": {
+            "trust_establishment_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "HTTPS URL for a DIF Credential Trust Establishment document that describes verifier-approved issuers, authorities, roles, activities, credential schemas, or credential types for this proof requirement."
+            }
+          },
+          "additionalProperties": false
+        },
+        "request_id": {
+          "type": "string",
+          "description": "Stable verifier-defined identifier for the proof template."
+        },
+        "satisfied_requirements": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Stable verifier-defined identifiers for the reusable proof requirements that will be marked satisfied if this proof is fulfilled."
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["dcql_query"],
+          "not": { "required": ["scope"] }
+        },
+        {
+          "required": ["scope"],
+          "not": { "required": ["dcql_query"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "payment": {
+      "type": "object",
+      "description": "Informational hint that payment is additionally required. Does not replace 402 Payment Required.",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether payment is additionally required."
+        },
+        "scheme_hint": {
+          "type": "string",
+          "description": "Hint naming the expected payment protocol."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Human-readable notes."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+```
