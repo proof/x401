@@ -169,11 +169,11 @@ The Agent decodes the x401 payload and creates its own OpenID4VP Authorization R
 {
   "response_type": "vp_token",
   "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
   "dcql_query": {
     "credentials": [
       {
-        "id": "board_certification",
+        "id": "financial_customer",
         "format": "jwt_vc_json"
       }
     ]
@@ -189,7 +189,7 @@ After the Wallet returns a presentation result, the Agent packages it as a VP Ar
 ```json
 {
   "agent_id": "did:web:agent.example",
-  "challenge": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
   "vp_token": "<wallet-returned-vp-token>"
 }
 ```
@@ -200,7 +200,7 @@ The Agent can submit the same VP Artifact to the Verifier's OAuth token endpoint
 
 ```http
 POST /oauth/token HTTP/1.1
-Host: research.example.com
+Host: bank.example.com
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange&
@@ -277,8 +277,8 @@ The initial leg of the protocol defines how a protected HTTP resource declares w
 The requirement is route-scoped. If a representation includes gated and ungated material, this version of x401 does not define per-fragment requirements or separate requirement mapping inside the page. Fulfillment of the complete credential demand in the `PROOF-REQUIRED` payload satisfies the route's x401 gate.
 
 ```http
-GET /papers/medical-study-123 HTTP/1.1
-Host: research.example.com
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
 Accept: application/json
 
 HTTP/1.1 401 Unauthorized
@@ -409,33 +409,33 @@ The proof object gives the Agent the verifier-supplied values it needs to create
   "dcql_query": {
     "credentials": [
       {
-        "id": "board_certification",
+        "id": "financial_customer",
         "format": "jwt_vc_json",
         "meta": {
-          "type_values": ["BoardCertificationCredential"]
+          "type_values": ["FinancialCustomerCredential"]
         },
         "claims": [
           {
-            "path": ["credentialSubject", "boardCertification", "status"],
-            "values": ["active"]
+            "path": ["credentialSubject", "assurance_level"],
+            "values": ["VC-AL2", "VC-AL3"]
           }
         ]
       }
     ]
   },
   "challenge": {
-    "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+    "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
     "expires_at": "2026-05-06T18:45:00Z"
   },
   "oauth": {
-    "token_endpoint": "https://research.example.com/oauth/token"
+    "token_endpoint": "https://bank.example.com/oauth/token"
   },
   "issuers": {
-    "trust_establishment_url": "https://research.example.com/.well-known/x401/trust/board-certified-doctor-v1"
+    "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
   },
-  "request_id": "proof-template-board-certified-doctor-v1",
+  "request_id": "proof-template-financial-customer-v1",
   "satisfied_requirements": [
-    "urn:example:x401:satisfaction:board-certified-doctor:v1"
+    "urn:example:x401:satisfaction:financial-customer:v1"
   ]
 }
 ```
@@ -445,20 +445,20 @@ The same proof object can instead use an OpenID4VP `scope` value when an applica
 ```json
 {
   "presentation_protocol": "openid4vp",
-  "scope": "board_certification",
+  "scope": "financial_customer",
   "challenge": {
-    "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+    "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
     "expires_at": "2026-05-06T18:45:00Z"
   },
   "oauth": {
-    "token_endpoint": "https://research.example.com/oauth/token"
+    "token_endpoint": "https://bank.example.com/oauth/token"
   },
   "issuers": {
-    "trust_establishment_url": "https://research.example.com/.well-known/x401/trust/board-certified-doctor-v1"
+    "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
   },
-  "request_id": "proof-template-board-certified-doctor-v1",
+  "request_id": "proof-template-financial-customer-v1",
   "satisfied_requirements": [
-    "urn:example:x401:satisfaction:board-certified-doctor:v1"
+    "urn:example:x401:satisfaction:financial-customer:v1"
   ]
 }
 ```
@@ -516,24 +516,24 @@ The Agent MAY use the Issuer Trust List to select candidate credentials or guide
   "dcql_query": {
     "credentials": [
       {
-        "id": "board_certification",
+        "id": "financial_customer",
         "format": "jwt_vc_json",
         "meta": {
-          "type_values": ["BoardCertificationCredential"]
+          "type_values": ["FinancialCustomerCredential"]
         }
       }
     ]
   },
   "challenge": {
-    "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+    "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
     "expires_at": "2026-05-06T18:45:00Z"
   },
   "oauth": {
-    "token_endpoint": "https://research.example.com/oauth/token"
+    "token_endpoint": "https://bank.example.com/oauth/token"
   },
-  "request_id": "proof-template-board-certified-doctor-v1",
+  "request_id": "proof-template-financial-customer-v1",
   "satisfied_requirements": [
-    "urn:example:x401:satisfaction:board-certified-doctor:v1"
+    "urn:example:x401:satisfaction:financial-customer:v1"
   ]
 }
 ```
@@ -564,7 +564,7 @@ The `proof.challenge` object carries the value the Agent gives to the Wallet and
 
 ```json
 {
-  "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
   "expires_at": "2026-05-06T18:45:00Z"
 }
 ```
@@ -648,11 +648,11 @@ This leg defines how the Agent turns the x401 payload into a wallet-facing OpenI
 {
   "response_type": "vp_token",
   "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
   "dcql_query": {
     "credentials": [
       {
-        "id": "board_certification",
+        "id": "financial_customer",
         "format": "jwt_vc_json"
       }
     ]
@@ -667,8 +667,8 @@ When the x401 payload contains `proof.scope` instead of `proof.dcql_query`, the 
 {
   "response_type": "vp_token",
   "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "scope": "board_certification",
+  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "scope": "financial_customer",
   "response_uri": "https://agent.example/wallet/callback/7c9e"
 }
 ```
@@ -726,8 +726,8 @@ x401 Agents:
 This phase of the protocol defines how the Agent packages the Wallet's presentation result and presents it back to the Verifier. The Agent either retries the protected route directly with a VP Artifact or uses that same VP Artifact in the OAuth token exchange described in the next leg.
 
 ```http
-GET /papers/medical-study-123 HTTP/1.1
-Host: research.example.com
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
 PROOF-PRESENTATION: <base64url-vp-artifact-json>
 ```
 
@@ -740,8 +740,8 @@ After the Wallet returns a presentation result, the Agent packages the result as
 ```json
 {
   "agent_id": "did:web:agent.example",
-  "challenge": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "request_id": "proof-template-board-certified-doctor-v1",
+  "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "request_id": "proof-template-financial-customer-v1",
   "vp_token": "<wallet-returned-vp-token>",
   "presentation_submission": {}
 }
@@ -772,8 +772,8 @@ When a Verifier reports that an x401 proof presentation failed or could not be p
   "version": "0.1.0",
   "error": "invalid_presentation",
   "error_description": "The presentation did not satisfy the route proof requirement.",
-  "request_id": "proof-template-board-certified-doctor-v1",
-  "challenge": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ"
+  "request_id": "proof-template-financial-customer-v1",
+  "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ"
 }
 ```
 
@@ -916,7 +916,7 @@ This optional leg of the protocol defines the optional exchange of a verified VP
 
 ```http
 POST /oauth/token HTTP/1.1
-Host: research.example.com
+Host: bank.example.com
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange&
@@ -938,13 +938,13 @@ The Agent SHOULD include the `resource` or `audience` value from `proof.oauth` w
 
 ```http
 POST /oauth/token HTTP/1.1
-Host: research.example.com
+Host: bank.example.com
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange&
 subject_token_type=urn:x401:params:oauth:token-type:vp_artifact&
 subject_token=<base64url-vp-artifact-json>&
-resource=https%3A%2F%2Fresearch.example.com%2Fpapers%2Fmedical-study-123
+resource=https%3A%2F%2Fbank.example.com%2Faccounts%2Fapplications
 ```
 
 The token endpoint MAY require normal OAuth client authentication. If client authentication is used, the authenticated OAuth client MUST bind to the same Agent Identifier that appears as the intended audience of the Wallet presentation.
@@ -973,17 +973,17 @@ For Verification Tokens defined by this specification, the token endpoint MUST r
   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
   "token_type": "Bearer",
   "expires_in": 300,
-  "scope": "papers:read",
+  "scope": "accounts:open",
   "x401": {
     "agent_id": "did:web:agent.example",
-    "verifier_id": "https://research.example.com",
-    "request_id": "proof-template-board-certified-doctor-v1",
+    "verifier_id": "https://bank.example.com",
+    "request_id": "proof-template-financial-customer-v1",
     "satisfied_requirements": [
-      "urn:example:x401:satisfaction:board-certified-doctor:v1"
+      "urn:example:x401:satisfaction:financial-customer:v1"
     ],
-    "resource": "https://research.example.com/papers/medical-study-123",
-    "method": "GET",
-    "challenge": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+    "resource": "https://bank.example.com/accounts/applications",
+    "method": "POST",
+    "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
     "expires_at": "2026-05-06T18:50:00Z"
   }
 }
@@ -1065,8 +1065,8 @@ Agents MAY use the `x401.satisfied_requirements` metadata returned with a Verifi
 #### Initial Request
 
 ```http
-GET /papers/medical-study-123 HTTP/1.1
-Host: research.example.com
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
 ```
 
 #### Response
@@ -1088,33 +1088,33 @@ Decoded x401 payload, shown for readability:
     "dcql_query": {
       "credentials": [
         {
-          "id": "board_certification",
+          "id": "financial_customer",
           "format": "jwt_vc_json",
           "meta": {
-            "type_values": ["BoardCertificationCredential"]
+            "type_values": ["FinancialCustomerCredential"]
           },
           "claims": [
             {
-              "path": ["credentialSubject", "boardCertification", "status"],
-              "values": ["active"]
+              "path": ["credentialSubject", "assurance_level"],
+              "values": ["VC-AL2", "VC-AL3"]
             }
           ]
         }
       ]
     },
     "challenge": {
-      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
       "expires_at": "2026-05-06T18:45:00Z"
     },
     "oauth": {
-      "token_endpoint": "https://research.example.com/oauth/token"
+      "token_endpoint": "https://bank.example.com/oauth/token"
     },
     "issuers": {
-      "trust_establishment_url": "https://research.example.com/.well-known/x401/trust/board-certified-doctor-v1"
+      "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
     },
-    "request_id": "proof-template-board-certified-doctor-v1",
+    "request_id": "proof-template-financial-customer-v1",
     "satisfied_requirements": [
-      "urn:example:x401:satisfaction:board-certified-doctor:v1"
+      "urn:example:x401:satisfaction:financial-customer:v1"
     ]
   }
 }
@@ -1128,19 +1128,19 @@ The Agent creates an OpenID4VP Authorization Request. The fragment below shows t
 {
   "response_type": "vp_token",
   "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
   "dcql_query": {
     "credentials": [
       {
-        "id": "board_certification",
+        "id": "financial_customer",
         "format": "jwt_vc_json",
         "meta": {
-          "type_values": ["BoardCertificationCredential"]
+          "type_values": ["FinancialCustomerCredential"]
         },
         "claims": [
           {
-            "path": ["credentialSubject", "boardCertification", "status"],
-            "values": ["active"]
+            "path": ["credentialSubject", "assurance_level"],
+            "values": ["VC-AL2", "VC-AL3"]
           }
         ]
       }
@@ -1160,20 +1160,20 @@ The same route can express the credential query using `proof.scope` when the val
   "version": "0.1.0",
   "proof": {
     "presentation_protocol": "openid4vp",
-    "scope": "board_certification",
+    "scope": "financial_customer",
     "challenge": {
-      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
       "expires_at": "2026-05-06T18:45:00Z"
     },
     "oauth": {
-      "token_endpoint": "https://research.example.com/oauth/token"
+      "token_endpoint": "https://bank.example.com/oauth/token"
     },
     "issuers": {
-      "trust_establishment_url": "https://research.example.com/.well-known/x401/trust/board-certified-doctor-v1"
+      "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
     },
-    "request_id": "proof-template-board-certified-doctor-v1",
+    "request_id": "proof-template-financial-customer-v1",
     "satisfied_requirements": [
-      "urn:example:x401:satisfaction:board-certified-doctor:v1"
+      "urn:example:x401:satisfaction:financial-customer:v1"
     ]
   }
 }
@@ -1185,8 +1185,8 @@ The Agent-created OpenID4VP Authorization Request carries the same `scope` value
 {
   "response_type": "vp_token",
   "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "scope": "board_certification",
+  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "scope": "financial_customer",
   "response_uri": "https://agent.example/wallet/callback/7c9e"
 }
 ```
@@ -1194,8 +1194,8 @@ The Agent-created OpenID4VP Authorization Request carries the same `scope` value
 #### Successful Retry With VP Artifact
 
 ```http
-GET /papers/medical-study-123 HTTP/1.1
-Host: research.example.com
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
 PROOF-PRESENTATION: <base64url-vp-artifact-json>
 ```
 
@@ -1217,13 +1217,13 @@ After receiving the Wallet presentation result, the Agent may exchange the VP Ar
 
 ```http
 POST /oauth/token HTTP/1.1
-Host: research.example.com
+Host: bank.example.com
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange&
 subject_token_type=urn:x401:params:oauth:token-type:vp_artifact&
 subject_token=<base64url-vp-artifact-json>&
-resource=https%3A%2F%2Fresearch.example.com%2Fpapers%2Fmedical-study-123
+resource=https%3A%2F%2Fbank.example.com%2Faccounts%2Fapplications
 ```
 
 If verification succeeds, the token endpoint returns:
@@ -1234,16 +1234,16 @@ If verification succeeds, the token endpoint returns:
   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
   "token_type": "Bearer",
   "expires_in": 300,
-  "scope": "papers:read",
+  "scope": "accounts:open",
   "x401": {
     "agent_id": "did:web:agent.example",
-    "verifier_id": "https://research.example.com",
-    "request_id": "proof-template-board-certified-doctor-v1",
+    "verifier_id": "https://bank.example.com",
+    "request_id": "proof-template-financial-customer-v1",
     "satisfied_requirements": [
-      "urn:example:x401:satisfaction:board-certified-doctor:v1"
+      "urn:example:x401:satisfaction:financial-customer:v1"
     ],
-    "resource": "https://research.example.com/papers/medical-study-123",
-    "method": "GET"
+    "resource": "https://bank.example.com/accounts/applications",
+    "method": "POST"
   }
 }
 ```
@@ -1251,16 +1251,16 @@ If verification succeeds, the token endpoint returns:
 If the returned token is an upgraded or replacement application authorization credential, the Agent retries the original protected route with the token in `Authorization`:
 
 ```http
-GET /papers/medical-study-123 HTTP/1.1
-Host: research.example.com
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
 Authorization: Bearer eyJhbGciOi...
 ```
 
 If the application already requires an existing `Authorization` token and the x401 Verification Token is separate, the Agent preserves the application token and carries the x401 Verification Token as an x401 Token Object in `PROOF-PRESENTATION`:
 
 ```http
-GET /papers/medical-study-123 HTTP/1.1
-Host: research.example.com
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
 Authorization: Bearer <existing-application-token>
 PROOF-PRESENTATION: <base64url-x401-token-object>
 ```
@@ -1346,20 +1346,20 @@ On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof r
     "dcql_query": {
       "credentials": [
         {
-          "id": "board_certification",
+          "id": "financial_customer",
           "format": "jwt_vc_json",
           "meta": {
-            "type_values": ["BoardCertificationCredential"]
+            "type_values": ["FinancialCustomerCredential"]
           }
         }
       ]
     },
     "challenge": {
-      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
       "expires_at": "2026-05-06T18:45:00Z"
     },
     "oauth": {
-      "token_endpoint": "https://research.example.com/oauth/token"
+      "token_endpoint": "https://bank.example.com/oauth/token"
     }
   }
 }</data>
@@ -1547,11 +1547,11 @@ Future work should define when stronger agent authentication is mandatory, how a
       ]
     },
     "challenge": {
-      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
       "expires_at": "2026-05-06T18:45:00Z"
     },
     "oauth": {
-      "token_endpoint": "https://research.example.com/oauth/token"
+      "token_endpoint": "https://bank.example.com/oauth/token"
     }
   }
 }
@@ -1567,11 +1567,11 @@ The minimal proof object can use `scope` instead of `dcql_query` when the value 
     "presentation_protocol": "openid4vp",
     "scope": "proof",
     "challenge": {
-      "value": "x401:aHR0cHM6Ly9yZXNlYXJjaC5leGFtcGxlLmNvbQ:uX7Vq3mZJH6MeN0qz2L7SQ",
+      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
       "expires_at": "2026-05-06T18:45:00Z"
     },
     "oauth": {
-      "token_endpoint": "https://research.example.com/oauth/token"
+      "token_endpoint": "https://bank.example.com/oauth/token"
     }
   }
 }
