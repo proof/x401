@@ -3,3 +3,4 @@ build/
 www/
 .DS_Store
 .wrangler
+.claude/
