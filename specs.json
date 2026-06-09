@@ -5,7 +5,7 @@
     {
       "title": "x401: HTTP Proof Requirement Protocol",
       "logo": "x401-icon.svg",
-      "logo_link": "https://proof.com",
+      "logo_link": "https://x401.id",
       "output_path": "./www/spec",
       "spec_directory": "./",
       "source": {
