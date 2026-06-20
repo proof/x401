@@ -3,7 +3,7 @@ x401: HTTP Proof Requirement Protocol
 
 Status: [[badge: Draft]]
 
-Version: 0.1.0
+Version: 0.2.0
 
 Editors:
 ~ [Daniel Buchner](https://www.linkedin.com/in/dbuchner) - [Proof](https://proof.com)
@@ -23,16 +23,16 @@ x401 defines an HTTP-based, route-scoped proof requirement protocol for requirin
 x401 uses:
 
 - the **`PROOF-REQUIRED` HTTP header field** to carry proof requirements
-- the **`PROOF-PRESENTATION` HTTP header field** to carry proof presentations or reusable proof-satisfaction tokens
+- the **`PROOF-PRESENTATION` HTTP header field** to carry proof presentations, presentation references, or reusable proof-satisfaction tokens
 - the **`PROOF-RESPONSE` HTTP header field** to carry verifier response information, including x401 proof errors
 - **HTTP status codes** to express the overall response semantics independently of x401 proof state
-- **Digital Credentials Query Language (DCQL)**, directly or through OpenID4VP `scope` aliases, to describe the credential requirements for a protected route
-- **OpenID for Verifiable Presentations (OpenID4VP)** for the Agent-created presentation request
+- the **W3C Digital Credentials API (DC API)** request shape as the carrier for the Verifier-composed presentation request, so the request can be executed by native credential wallet/handler methods or relayed to other wallets and remote services
+- **OpenID for Verifiable Presentations (OpenID4VP)** over the DC API for the composed presentation request, using **Digital Credentials Query Language (DCQL)** to describe the credential requirements
 - **OAuth 2.0** for optional exchange of a verified presentation for an access token
 - **DIF Credential Trust Establishment** for verifier-approved issuer policy and non-authoritative acquisition guidance
 - **OpenID for Verifiable Credential Issuance (OpenID4VCI)** for resolving credential issuer metadata when the referenced trust document identifies OpenID4VCI issuers
 
-The x401 payload is not a fully composed OpenID4VP Authorization Request. The Verifier returns the presentation protocol, credential query requirement, Verifier Challenge value, issuer trust reference, and OAuth token exchange metadata the Agent needs in order to create its own OpenID4VP Authorization Request for a Wallet.
+The x401 payload carries a composed, valid Digital Credentials request authored by the Verifier. The Verifier is the relying party for that request. The request is placed at the payload's `presentation_requirements` member so it can be executed directly through native credential wallet/handler methods (`navigator.credentials.get({ digital: payload.presentation_requirements })`), relayed to another web wallet or remote presentation service, or handed off for fully remote generation. The payload's other top-level members — such as OAuth token exchange metadata, an issuer trust reference, and reusable requirement identifiers — carry x401-specific values that are not yet expressible inside a native Digital Credentials request.
 
 x401 is intentionally separate from payment protocols. When payment is required, it MUST be handled with **HTTP 402 Payment Required** and an appropriate payment protocol. x401 MUST NOT redefine payment semantics.
 
@@ -53,45 +53,48 @@ HTTP provides a standard challenge mechanism for authentication via `401 Unautho
 - proving organizational standing
 - proving workload identity attributes
 
-At the same time, OpenID4VP, DCQL, OAuth, and OpenID4VCI define interoperable mechanisms for requesting presentations, evaluating credential requirements, issuing access tokens, and issuing credentials, but they are not themselves an HTTP route proof requirement protocol.
+At the same time, OpenID4VP, DCQL, OAuth, OpenID4VCI, and the W3C Digital Credentials API define interoperable mechanisms for requesting presentations, evaluating credential requirements, invoking wallets, issuing access tokens, and issuing credentials, but they are not themselves an HTTP route proof requirement protocol.
 
 x401 fills that gap by defining an HTTP-native wrapper that:
 
 - signals proof requirements at the protected route
 - carries x401 proof objects as base64url values in dedicated proof header fields
-- carries a credential query requirement for the route, expressed as either a DCQL query or an OpenID4VP `scope` value that represents a DCQL query
-- carries a Verifier Challenge value composed from the Verifier's identifier and a cryptographic nonce
-- gives the Agent the information required to create a valid OpenID4VP Authorization Request for its Wallet
+- carries a composed, valid Digital Credentials request, authored and signed by the Verifier, at the payload's `presentation_requirements` member
+- requires the composed request to be a signed OpenID4VP request for the DC API, so that the Verifier is the relying party and the request is bound to the Verifier independently of which surface invokes it
+- lets the [[ref: Agent]] execute the request through native credential methods, relay it to another wallet or remote service, or hand it off for fully remote generation and then acquire the result
 - includes OAuth token exchange metadata for Agents that want a reusable access token after proving
 - optionally includes a DIF Credential Trust Establishment URL that can help Agents discover acceptable credential issuers
 - composes with, but does not subsume, payment protocols
 
-In the typical flow, an [[ref: Agent]] receives an x401 proof requirement from a [[ref: Verifier]], creates a wallet-facing [[ref: Presentation Request]] that includes the Verifier's [[ref: Credential Query Requirement]] and [[ref: Verifier Challenge]], receives a verifiable presentation from a [[ref: Wallet]], and retries the original protected route. An [[ref: Issuer Trust List]] can help the Agent discover credentials or issuers, but the Verifier remains authoritative for issuer trust enforcement.
+In the typical flow, an [[ref: Agent]] receives an x401 proof requirement from a [[ref: Verifier]], obtains a presentation for the Verifier-composed [[ref: Presentation Request]] — by invoking the request through native credential methods, relaying it to a [[ref: Wallet]], or acquiring a remotely generated result — and retries the original protected route with the presentation result inline or by reference. An [[ref: Issuer Trust List]] can help the Agent discover credentials or issuers, but the Verifier remains authoritative for issuer trust enforcement.
 
 ## Design Goals
 
 The goals of x401 are:
 
 1. Define a route-scoped proof requirement for HTTP resources.
-2. Allow Verifiers to send proof requirements without composing the Agent's OpenID4VP Authorization Request.
-3. Require the Agent to bind the wallet presentation to its own identifier while preserving a verifier-originated Verifier Challenge.
-4. Reuse OpenID4VP credential query mechanisms, DCQL, OAuth, and OpenID4VCI.
-5. Remain separate from payment semantics.
-6. Allow issuer discovery by reference to verifier trust policy without listing issuers inline in the x401 payload.
-7. Support stateless verifier deployments by allowing Verifier Challenge correlation context to be encoded in verifier-protected nonce values.
-8. Allow additional caller authentication, request signing, and delegation artifacts to compose with x401 without making any one agent identity system mandatory.
+2. Carry a composed, valid Digital Credentials request, authored by the Verifier, that can be executed by native credential wallet/handler methods.
+3. Make the Verifier the relying party for that request, bound through the request signature so the binding holds regardless of which surface invokes the request.
+4. Preserve the Agent's ability to execute the request natively, relay it to another wallet or remote service, or hand it off for fully remote generation and then acquire and present the result.
+5. Reserve the top level of the x401 payload, alongside the native request, for x401-specific values that are not yet expressible inside a native Digital Credentials request.
+6. Reuse OpenID4VP over the DC API, DCQL, OAuth, and OpenID4VCI rather than redefining them.
+7. Remain separate from payment semantics.
+8. Allow issuer discovery by reference to verifier trust policy without listing issuers inline in the x401 payload.
+9. Support stateless verifier deployments without dictating how the Verifier achieves it.
+10. Allow optional caller authentication, request signing, and delegation artifacts to compose with x401 without making any one agent identity or binding system mandatory.
 
 ## Non-Goals
 
 x401 does not:
 
 - define a new credential format
-- replace OpenID4VP
+- replace OpenID4VP or the W3C Digital Credentials API
 - replace OpenID4VCI
-- define the transport used to deliver an OpenID4VP request to a Wallet
+- redefine how a Digital Credentials request is composed, signed, or invoked
+- mandate a single transport for delivering the composed request to a Wallet
 - define a payment protocol
 - require all Verifiers to maintain server-side session state
-- define a universal agent authentication protocol
+- require VP response encryption or any single agent authentication or binding mechanism
 
 ## Terminology
 
@@ -101,37 +104,34 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ The party protecting a resource or operation and requiring proof.
 
 [[def: Agent]]:
-~ The HTTP caller that requests a protected route, receives an x401 proof requirement, creates a wallet-facing OpenID4VP presentation request, receives proof material from a Wallet, and retries the protected route. The Agent uses an [[ref: Agent Identifier]] for client binding.
+~ The HTTP caller that requests a protected route, receives an x401 proof requirement, obtains a presentation for the Verifier-composed [[ref: Presentation Request]] — by invoking it through native credential methods, relaying it to a Wallet or remote service, or acquiring a remotely generated result — and retries the protected route. The Agent does not compose the presentation request and is not, by default, the relying party for it. A deployment MAY additionally bind the Agent to the request using an optional [[ref: Agent Identifier]].
 
 [[def: Agent Identifier]]:
-~ An identifier for the Agent that the Verifier can bind to the HTTP caller. This specification does not register a single Agent Identifier scheme; a Verifier policy MUST define which schemes it accepts, including any accepted DID, HTTPS origin, domain-bound client identifier, or certificate-bound identifier schemes.
+~ An optional identifier for the Agent that a Verifier MAY bind to the HTTP caller. This specification does not register a single Agent Identifier scheme; a Verifier that chooses to bind the Agent MUST define which schemes it accepts, including any accepted DID, HTTPS origin, domain-bound client identifier, or certificate-bound identifier schemes. See [Agent Binding Options](#agent-binding-options).
 
 [[def: Holder]]:
 ~ The subject or entity that possesses credentials and can authorize a Wallet to present proof.
 
 [[def: Wallet]]:
-~ Software capable of receiving an OpenID4VP presentation request from an Agent and returning a verifiable presentation result authorized by a [[ref: Holder]].
+~ Software capable of receiving an OpenID4VP request through the Digital Credentials API or another transport and returning a presentation result authorized by a [[ref: Holder]].
+
+[[def: Digital Credentials Request]]:
+~ The composed, valid Digital Credentials request the Verifier places at the payload's `presentation_requirements` member. It is a `DigitalCredentialRequestOptions` value (`{ "requests": [ ... ] }`) usable directly as the `digital` member of `navigator.credentials.get()`. Each entry is a signed OpenID4VP request for the DC API.
 
 [[def: Presentation Request]]:
-~ An OpenID4VP Authorization Request created by the Agent. It includes the [[ref: Credential Query Requirement]] from the x401 payload as either `dcql_query` or `scope`, uses the [[ref: Verifier Challenge]] value as `nonce`, and identifies the Agent as the OpenID4VP client.
+~ The Verifier-authored OpenID4VP request carried inside the [[ref: Digital Credentials Request]]. The Verifier signs it and is its relying party. It identifies the credential requirement as `dcql_query`, carries the OpenID4VP `nonce`, and binds to the Verifier through the request signature, `client_id`, and `expected_origins`.
 
-[[def: Credential Query Requirement]]:
-~ The verifier-supplied credential selection requirement in the x401 payload. It is expressed as exactly one of `proof.dcql_query` or `proof.scope`.
-
-[[def: DCQL Requirement]]:
-~ A [[ref: Credential Query Requirement]] expressed directly as `proof.dcql_query`.
-
-[[def: Scope Requirement]]:
-~ A [[ref: Credential Query Requirement]] expressed as `proof.scope`. A Scope Requirement is an OpenID4VP `scope` string whose scope value, or values, represent well-defined DCQL queries according to OpenID4VP and an applicable profile, ecosystem, Wallet configuration, or verifier policy recognized by the Wallet and Verifier.
-
-[[def: Verifier Challenge]]:
-~ A nonce-bearing object generated by the Verifier. It contains a challenge value and expiry. The challenge value is composed from, or bound to, the Verifier's identifier and a fresh cryptographic nonce. The Agent uses this exact value as the OpenID4VP `nonce` in its wallet-facing Presentation Request.
+[[def: Presentation Result]]:
+~ The result a Wallet returns for a [[ref: Digital Credentials Request]], shaped as `{ "protocol": ..., "data": ... }` as returned by the Digital Credentials API.
 
 [[def: Issuer Trust List]]:
 ~ A verifier-controlled DIF Credential Trust Establishment document that identifies the issuers, authorities, roles, activities, credential schemas, or credential types the Verifier accepts for a proof requirement. The same document can also help Agents discover where qualifying credentials may be obtained.
 
 [[def: VP Artifact]]:
-~ A retry artifact containing the Wallet's presentation result and the x401 metadata needed by the Verifier to validate proof fulfillment for an [[ref: Agent Identifier]], encoded for use in a `PROOF-PRESENTATION` request header or OAuth token exchange.
+~ A retry artifact carrying a [[ref: Presentation Result]] — either inline or as a [[ref: Presentation Reference]] — together with the x401 metadata the Verifier needs to correlate proof fulfillment, encoded for use in a `PROOF-PRESENTATION` request header or OAuth token exchange.
+
+[[def: Presentation Reference]]:
+~ A by-reference form of the [[ref: VP Artifact]] that carries a URL the Verifier dereferences to fetch a [[ref: Presentation Result]] instead of carrying it inline, for presentations that exceed header size limits or are generated at a remote location.
 
 [[def: Verification Token]]:
 ~ A verifier-issued, short-lived access token returned after successful proof verification and used by the [[ref: Agent]] on later protected-route requests so that the VP Artifact does not need to be repeated. A Verification Token can be used as the route's normal `Authorization` token when the deployment supports that model, or carried as an x401 Token Object in `PROOF-PRESENTATION` when the route already uses `Authorization` for existing application authentication.
@@ -147,7 +147,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 
 ## Protocol Overview
 
-The x401 protocol is made up of four legs: a Verifier exposes identity proof requirements that gate access to a resource, the Agent turns the requirements into a wallet-facing OpenID4VP request, the Agent presents the Wallet's presentation result back to the Verifier, and the Agent may exchange that proof for a reusable Verification Token. The tabs below summarize each leg and link to the detailed section that defines the processing rules that pertain to them.
+The x401 protocol is made up of four legs: a Verifier exposes identity proof requirements that gate access to a resource by composing a Digital Credentials request, the Agent obtains a presentation for that request, the Agent presents the result back to the Verifier, and the Agent may exchange that proof for a reusable Verification Token. The tabs below summarize each leg and link to the detailed section that defines the processing rules that pertain to them.
 
 ::: tabs
 
@@ -161,36 +161,26 @@ PROOF-REQUIRED: <base64url-x401-payload>
 Cache-Control: no-store
 ```
 
-:: 2. Agent Presentation
+:: 2. Obtaining a Presentation
 
-The Agent decodes the x401 payload and creates its own OpenID4VP Authorization Request for the Wallet. It preserves the Verifier's credential query requirement, as either `dcql_query` or `scope`, and uses the exact Verifier Challenge value as the OpenID4VP `nonce`; see [Agent-Generated Verifiable Presentation](#agent-generated-verifiable-presentation) for details.
+The Agent decodes the x401 payload and obtains a presentation for the Verifier-composed request at the payload's `presentation_requirements` member. The Agent does not compose or alter the request; it invokes it through native credential methods, relays it to a Wallet or remote service, or acquires a remotely generated result; see [Obtaining a Presentation](#obtaining-a-presentation) for details. The composed request is directly usable as the `digital` member of `navigator.credentials.get()`.
 
-```json
-{
-  "response_type": "vp_token",
-  "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "dcql_query": {
-    "credentials": [
-      {
-        "id": "financial_customer",
-        "format": "jwt_vc_json"
-      }
-    ]
-  },
-  "response_uri": "https://agent.example/wallet/callback/7c9e"
-}
+```js
+const result = await navigator.credentials.get({ digital: payload.presentation_requirements });
+// result => { protocol: "openid4vp-v1-signed", data: { /* presentation result */ } }
 ```
 
 :: 3. VP Presentation
 
-After the Wallet returns a presentation result, the Agent packages it as a VP Artifact for protected-route retry. The VP Artifact carries the Agent Identifier, Verifier Challenge, and Wallet-returned proof material; see [Verifiable Presentation Delivery](#verifiable-presentation-delivery) for details.
+After obtaining a presentation result, the Agent packages it as a VP Artifact for protected-route retry. The VP Artifact carries the Wallet-returned presentation result inline, or a reference the Verifier dereferences; see [Verifiable Presentation Delivery](#verifiable-presentation-delivery) for details.
 
 ```json
 {
-  "agent_id": "did:web:agent.example",
-  "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "vp_token": "<wallet-returned-vp-token>"
+  "request_id": "proof-template-financial-customer-v1",
+  "response": {
+    "protocol": "openid4vp-v1-signed",
+    "data": "<wallet-returned-presentation-result>"
+  }
 }
 ```
 
@@ -218,14 +208,17 @@ In the primary x401 flow, the [[ref: Agent]] is the HTTP caller and is assumed t
 2. The [[ref: Verifier]] determines that proof is required.
 3. The [[ref: Verifier]] returns an HTTP response with:
    - `PROOF-REQUIRED: <base64url-x401-payload>`
-4. The [[ref: Agent]] decodes the x401 payload and extracts the OpenID4VP presentation protocol, Credential Query Requirement, Verifier Challenge, and OAuth token endpoint.
-5. The [[ref: Agent]] creates a wallet-facing OpenID4VP Presentation Request. The request MUST use the x401 Verifier Challenge as its `nonce` value, MUST include the x401 Credential Query Requirement using the same OpenID4VP query parameter name supplied by the x401 payload, and MUST identify the Agent as the OpenID4VP client.
-6. The [[ref: Wallet]] returns a presentation result to the [[ref: Agent]].
+4. The [[ref: Agent]] decodes the x401 payload and reads the composed [[ref: Digital Credentials Request]] at the `presentation_requirements` member and the OAuth token endpoint.
+5. The [[ref: Agent]] obtains a [[ref: Presentation Result]] for `presentation_requirements` without altering it, by one of:
+   - invoking the request through a native credential method such as `navigator.credentials.get({ digital: payload.presentation_requirements })`,
+   - relaying the request to a Wallet or remote presentation service that can execute it, or
+   - handing the request to a remote fulfillment surface and acquiring the generated result.
+6. The chosen Wallet, handler, or service returns a presentation result bound to the Verifier as relying party.
 7. The [[ref: Agent]] retries the same protected route that produced the x401 proof requirement with one of:
-   - a [[ref: VP Artifact]] in a `PROOF-PRESENTATION` request header,
+   - a [[ref: VP Artifact]] in a `PROOF-PRESENTATION` request header, carrying the presentation result inline or as a [[ref: Presentation Reference]],
    - a [[ref: Verification Token]] carried as an x401 Token Object in a `PROOF-PRESENTATION` request header, or
    - a [[ref: Verification Token]] in the route's normal `Authorization` request header when the deployment uses x401 proof satisfaction to upgrade or replace the route's ordinary authorization credential.
-8. The [[ref: Verifier]] validates the VP Artifact or Verification Token.
+8. The [[ref: Verifier]] validates the VP Artifact or Verification Token, dereferencing a Presentation Reference when one is supplied.
 9. If proof is satisfied and payment is not required or is already satisfied, the [[ref: Verifier]] returns the protected resource.
 10. If proof is satisfied but payment remains unsatisfied, the [[ref: Verifier]] returns `402 Payment Required` with payment protocol details. After satisfying payment, the [[ref: Agent]] retries the same route with proof or token material and the payment artifact required by the selected payment protocol.
 
@@ -236,10 +229,10 @@ sequenceDiagram
     participant Wallet
     participant Payment
     Agent->>Verifier: Request protected route
-    Verifier-->>Agent: HTTP response + PROOF-REQUIRED ...
-    Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and credential query
-    Wallet-->>Agent: Presentation result
-    Agent->>Verifier: Retry same route with PROOF-PRESENTATION or Authorization token
+    Verifier-->>Agent: HTTP response + PROOF-REQUIRED (composed request)
+    Agent->>Wallet: Invoke / relay verifier-composed Digital Credentials request
+    Wallet-->>Agent: Presentation result (bound to Verifier as RP)
+    Agent->>Verifier: Retry route with PROOF-PRESENTATION result or OAuth token
     opt Payment required after proof satisfaction
         Verifier-->>Agent: 402 Payment Required
         Agent->>Payment: Complete payment protocol
@@ -259,16 +252,16 @@ sequenceDiagram
     participant Verifier
     participant Wallet
     Agent->>Verifier: Request protected route
-    Verifier-->>Agent: HTTP response + PROOF-REQUIRED ...
-    Agent->>Wallet: OpenID4VP Presentation Request with Agent client_id, verifier nonce, and credential query
-    Wallet-->>Agent: Presentation result
+    Verifier-->>Agent: HTTP response + PROOF-REQUIRED (composed request)
+    Agent->>Wallet: Invoke / relay verifier-composed Digital Credentials request
+    Wallet-->>Agent: Presentation result (bound to Verifier as RP)
     Agent->>Verifier: OAuth token request with VP artifact
     Verifier-->>Agent: Verification token
     Agent->>Verifier: Retry same route with Authorization token or PROOF-PRESENTATION token object
     Verifier-->>Agent: Protected resource
 ```
 
-The technical sections that follow are organized by the four main legs of the protocol: x401 gated resource configuration, Agent-generated verifiable presentation, verifiable presentation delivery, and access token acquisition.
+The technical sections that follow are organized by the four main legs of the protocol: x401 gated resource configuration, obtaining a presentation, verifiable presentation delivery, and access token acquisition.
 
 ## x401 Gated Resource Configuration
 
@@ -331,13 +324,13 @@ Examples include:
 - credential from an untrusted issuer
 - credential does not satisfy predicates
 - expired or revoked credential
-- presentation audience does not match the Agent Identifier
-- challenge value does not match the expected verifier identifier and nonce
+- presentation is not bound to the Verifier as relying party
+- nonce is not one the Verifier issued, or is expired or replayed
 - insufficient assurance level
 
 ### Proof Header Fields
 
-The proof header fields carry x401 protocol objects. This specification uses "x401 proof requirement" for the overall route-gating declaration and reserves [[ref: Verifier Challenge]] for the nonce-bearing `proof.challenge` object.
+The proof header fields carry x401 protocol objects. This specification uses "x401 proof requirement" for the overall route-gating declaration carried in `PROOF-REQUIRED`.
 
 #### Header Syntax
 
@@ -382,11 +375,17 @@ The payload SHOULD remain compact. Sensitive route state SHOULD be omitted, stor
 ```json
 {
   "scheme": "x401",
-  "version": "0.1.0",
-  "proof": {},
+  "version": "0.2.0",
+  "presentation_requirements": {},
+  "oauth": {},
+  "trust_establishment": "https://...",
+  "request_id": "...",
+  "satisfied_requirements": [],
   "payment": {}
 }
 ```
+
+The top level of the x401 payload is itself the envelope: the native, standard Digital Credentials request is the `presentation_requirements` member, and the remaining x401-specific members — which are not yet expressible inside a native Digital Credentials request — sit alongside it so the Agent and Verifier can polyfill their use.
 
 #### Member Definitions
 
@@ -394,18 +393,53 @@ Name | Definition
 ---- | ----------
 `scheme` | REQUIRED. Value MUST be the string `"x401"`.
 `version` | REQUIRED. The x401 payload version.
-`proof` | REQUIRED. Contains the presentation protocol, Credential Query Requirement, Verifier Challenge, issuer trust reference, OAuth token exchange metadata, and reusable requirement identifiers.
+`presentation_requirements` | REQUIRED. The composed [[ref: Digital Credentials Request]]. See [Presentation Requirements](#presentation-requirements).
+`oauth` | REQUIRED. OAuth token exchange metadata for obtaining a reusable Verification Token. See [OAuth Members](#oauth-members).
+`trust_establishment` | OPTIONAL. HTTPS URL of a DIF Credential Trust Establishment document, as an acquisition and discovery hint. See [Trust Establishment](#trust-establishment).
+`request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template, as an Agent-visible hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
+`satisfied_requirements` | OPTIONAL. Stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy, as an Agent-visible reuse hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
 `payment` | OPTIONAL. Describes that payment is additionally required, without replacing `402` semantics.
 
-### Proof Object
+The credential requirement, the OpenID4VP `nonce`, and the request expiry all live inside the signed request in `presentation_requirements`; x401 does not duplicate them at the payload level. Of the payload-level members, only `presentation_requirements` and `oauth` are load-bearing; `trust_establishment`, `request_id`, and `satisfied_requirements` are optional hints and optimizations.
 
-The proof object gives the Agent the verifier-supplied values it needs to create its own Presentation Request and later retry the protected route.
+### Presentation Requirements
+
+The `presentation_requirements` member carries the Verifier-composed [[ref: Digital Credentials Request]]. The Verifier authors and signs it and is its relying party.
 
 #### General Structure
 
 ```json
 {
-  "presentation_protocol": "openid4vp",
+  "presentation_requirements": {
+    "requests": [
+      {
+        "protocol": "openid4vp-v1-signed",
+        "data": {
+          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+        }
+      }
+    ]
+  },
+  "oauth": {
+    "token_endpoint": "https://bank.example.com/oauth/token"
+  },
+  "trust_establishment": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1",
+  "request_id": "proof-template-financial-customer-v1",
+  "satisfied_requirements": [
+    "urn:example:x401:satisfaction:financial-customer:v1"
+  ]
+}
+```
+
+`presentation_requirements` is a `DigitalCredentialRequestOptions` value, usable directly as the `digital` member of `navigator.credentials.get()`. Each entry in `requests` is a signed OpenID4VP request for the DC API. The signed JAR carries the OpenID4VP request the Verifier authored — RP identity and freshness live there, not in any x401-specific field. Decoded for readability, a typical JAR payload is:
+
+```json
+{
+  "response_type": "vp_token",
+  "response_mode": "dc_api",
+  "client_id": "x509_san_dns:bank.example.com",
+  "expected_origins": ["https://bank.example.com"],
+  "nonce": "uX7Vq3mZJH6MeN0qz2L7SQ",
   "dcql_query": {
     "credentials": [
       {
@@ -423,71 +457,22 @@ The proof object gives the Agent the verifier-supplied values it needs to create
       }
     ]
   },
-  "challenge": {
-    "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-    "expires_at": "2026-05-06T18:45:00Z"
-  },
-  "oauth": {
-    "token_endpoint": "https://bank.example.com/oauth/token"
-  },
-  "issuers": {
-    "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
-  },
-  "request_id": "proof-template-financial-customer-v1",
-  "satisfied_requirements": [
-    "urn:example:x401:satisfaction:financial-customer:v1"
-  ]
+  "client_metadata": {},
+  "exp": 1746557100
 }
 ```
 
-The same proof object can instead use an OpenID4VP `scope` value when an applicable profile, Wallet configuration, or verifier policy recognized by the Wallet and Verifier defines that scope as a credential query:
+The `presentation_requirements` member is a `DigitalCredentialRequestOptions` value, usable directly as the `digital` member of `navigator.credentials.get()`. The credential requirement (`dcql_query`), the OpenID4VP `nonce`, and the request expiry (`exp`) all live inside the signed request; x401 does not restate or duplicate them at the payload level, and adds no expiry member of its own.
 
-```json
-{
-  "presentation_protocol": "openid4vp",
-  "scope": "financial_customer",
-  "challenge": {
-    "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-    "expires_at": "2026-05-06T18:45:00Z"
-  },
-  "oauth": {
-    "token_endpoint": "https://bank.example.com/oauth/token"
-  },
-  "issuers": {
-    "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
-  },
-  "request_id": "proof-template-financial-customer-v1",
-  "satisfied_requirements": [
-    "urn:example:x401:satisfaction:financial-customer:v1"
-  ]
-}
-```
-
-#### Members
+#### Request Members
 
 Name | Definition
 ---- | ----------
-`presentation_protocol` | REQUIRED. Identifies the wallet-facing presentation protocol the Agent MUST use. For this version of x401, the value MUST be `"openid4vp"`.
-`dcql_query` | OPTIONAL. The explicit [[ref: DCQL Requirement]] for the protected route. The Agent MUST include this value as the `dcql_query` in its Presentation Request when `dcql_query` is present. Exactly one of `dcql_query` or `scope` MUST be present.
-`scope` | OPTIONAL. The [[ref: Scope Requirement]] for the protected route. The Agent MUST include this value as the OpenID4VP `scope` in its Presentation Request when `scope` is present. Exactly one of `dcql_query` or `scope` MUST be present.
-`challenge` | REQUIRED. The Verifier Challenge object. The Agent MUST include `challenge.value` as the OpenID4VP `nonce` in its Presentation Request.
-`oauth` | REQUIRED. OAuth token exchange metadata. It gives the Agent the endpoint, and any optional resource or audience values, needed to exchange a VP Artifact for a Verification Token.
-`issuers` | OPTIONAL. References verifier-approved issuer trust policy for the proof requirement. When present, this object MUST identify an [[ref: Issuer Trust List]] and MUST NOT list approved issuers inline.
-`request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template. This value can be reused across Verifier Challenge instances and routes when they ask for the same proof requirement.
-`satisfied_requirements` | OPTIONAL. An array of stable verifier-defined identifiers for the reusable proof requirements that will be marked satisfied if this proof is fulfilled.
+`requests` | REQUIRED. A non-empty array of Digital Credentials request entries. A Verifier MAY include more than one entry (for example, offering different credential formats) for a Wallet, handler, or remote service to select among. Every entry MUST be a signed OpenID4VP request for the DC API.
+`requests[].protocol` | REQUIRED. The DC API protocol identifier. For this version of x401 the value MUST be `"openid4vp-v1-signed"`.
+`requests[].data` | REQUIRED. The protocol-specific request data. For `openid4vp-v1-signed`, this is an object carrying the signed OpenID4VP request (a JWT-Secured Authorization Request).
 
-The proof object MUST contain exactly one Credential Query Requirement: either `dcql_query` or `scope`. It MUST NOT contain both, and it MUST NOT omit both.
-
-When `scope` is used, each scope value MUST be an alias for a well-defined DCQL query in the applicable OpenID4VP profile, ecosystem, Wallet configuration, or verifier policy recognized by the Wallet and Verifier. If a single `scope` string contains multiple scope values, the DCQL Credential Query `id` values and claim `id` values represented by those scope values MUST be unique across the combined query. The Verifier MUST be able to validate the returned credentials against the credential policy represented by the `scope` value and MUST NOT treat the returned `scope` string itself as proof satisfaction.
-
-#### Verifier Challenge Members
-
-Name | Definition
----- | ----------
-`value` | REQUIRED. The exact value the Agent MUST use as the OpenID4VP `nonce` in its Presentation Request.
-`expires_at` | REQUIRED. The time after which the Verifier will reject the Verifier Challenge. The value MUST be an RFC 3339 timestamp.
-
-#### OAuth Members
+### OAuth Members
 
 Name | Definition
 ---- | ----------
@@ -497,36 +482,37 @@ Name | Definition
 
 The x401 OAuth profile fixes `grant_type`, `subject_token_type`, and Bearer token usage. These values MUST NOT be repeated in the x401 payload.
 
-#### Issuers Members
+### Trust Establishment
+
+`trust_establishment` is an OPTIONAL acquisition and discovery hint. Its value is an HTTPS URL for a DIF Credential Trust Establishment document that describes the issuers, authorities, roles, activities, credential schemas, or credential types the Verifier approves for this proof requirement. It is not the mechanism that decides validity.
+
+Issuer enforcement is ultimately governed by the signed request, not by `trust_establishment`. Where the Verifier needs the Wallet to constrain acceptable issuers at presentation time, it expresses that with DCQL `trusted_authorities` inside the signed request in `presentation_requirements`. `trust_establishment` exists to help Agents and Wallets *discover* and *acquire* likely-acceptable credentials, and to convey richer ecosystem, role, or acquisition metadata than `trusted_authorities` carries; it MUST NOT enumerate approved issuers inline. The Verifier MUST enforce issuer trust during proof validation — against the `trusted_authorities` in the request and its own policy — and MUST NOT rely on the Agent's interpretation of the Issuer Trust List.
+
+### Reusable Requirement Hints
+
+`request_id` and `satisfied_requirements` are OPTIONAL, Agent-visible hints that support cross-route token reuse. They are not inputs to proof validation or token issuance — the Verifier determines what a proof satisfies from its own policy. See [Reuse Across Routes](#reuse-across-routes).
 
 Name | Definition
 ---- | ----------
-`trust_establishment_url` | REQUIRED when `issuers` is present. An HTTPS URL for a DIF Credential Trust Establishment document that describes the issuers, authorities, roles, activities, credential schemas, or credential types the Verifier approves for this proof requirement.
+`request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template. It lets an Agent recognize that two routes ask for the same proof.
+`satisfied_requirements` | OPTIONAL. Stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy, letting an Agent decide whether an existing Verification Token may apply to a later route.
 
-Verifier-approved issuers MUST NOT be enumerated inline in the x401 payload. A Verifier that wants to expose issuer approval policy to Agents SHOULD publish a DIF Credential Trust Establishment document and provide its URL in `proof.issuers.trust_establishment_url`.
+### Payload Example
 
-The Agent MAY use the Issuer Trust List to select candidate credentials or guide acquisition. The Verifier MUST enforce issuer trust during proof validation and MUST NOT rely on the Agent's interpretation of the Issuer Trust List.
-
-#### Proof Object Example
-
-::: example Proof Object Example
+::: example x401 Payload Example
 ```json
 {
-  "presentation_protocol": "openid4vp",
-  "dcql_query": {
-    "credentials": [
+  "scheme": "x401",
+  "version": "0.2.0",
+  "presentation_requirements": {
+    "requests": [
       {
-        "id": "financial_customer",
-        "format": "jwt_vc_json",
-        "meta": {
-          "type_values": ["FinancialCustomerCredential"]
+        "protocol": "openid4vp-v1-signed",
+        "data": {
+          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
         }
       }
     ]
-  },
-  "challenge": {
-    "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-    "expires_at": "2026-05-06T18:45:00Z"
   },
   "oauth": {
     "token_endpoint": "https://bank.example.com/oauth/token"
@@ -539,72 +525,19 @@ The Agent MAY use the Issuer Trust List to select candidate credentials or guide
 ```
 :::
 
-### Verifier Challenge Construction and Correlation
+### Verifier State and Stateless Operation
 
-When a Verifier creates a Verifier Challenge, it MUST bind the Verifier Challenge instance to the protected resource context needed to evaluate the retry. This context includes the requested method, route or resource identifier, Credential Query Requirement, Verifier identifier, cryptographic nonce, expiration time, expected Agent Identifier rules, and accepted retry mechanisms.
+Because the Verifier authors, signs, and validates its own request, freshness, replay protection, and correlation between a returned presentation and the issued request are internal Verifier concerns. x401 places no requirements on how the Verifier composes the OpenID4VP `nonce`, recognizes a returned presentation as one it requested, or recovers route and policy context. The freshness and replay properties of the `nonce` are governed by OpenID4VP.
 
-This binding MAY be stored server-side, but x401 does not require that storage. A Verifier MAY instead encode the binding into the nonce segment as verifier-protected Verifier Challenge state.
-
-#### Verifier Challenge State and Verification
-
-A Verifier MUST be able to determine that a returned challenge value is one it issued for the protected route being retried. Matching the `x401` prefix and decoded Verifier identifier is not sufficient.
-
-The Verifier MUST support at least one of the following Verifier Challenge correlation models:
-
-1. **Stored Verifier Challenge state.** The nonce segment is an opaque handle to a Verifier Challenge record stored by the Verifier. The record MUST include or reference the route, method, Credential Query Requirement, policy, Verifier identifier, nonce, expiration time, expected Agent Identifier rules, accepted retry mechanisms, and replay status needed to evaluate the retry.
-2. **Verifier-protected nonce state.** The nonce segment is a self-contained or referencing value protected by the Verifier with a signature, MAC, or authenticated encryption. It MUST allow the Verifier to authenticate the returned challenge value and reconstruct the expected route, method, Credential Query Requirement, policy, Verifier identifier, nonce, expiration time, expected Agent Identifier rules, and replay requirements.
-
-In both models, the nonce segment MUST contain or be bound to at least 128 bits of cryptographic randomness. The Agent treats the nonce segment as opaque and MUST NOT parse it.
-
-When validating a returned VP Artifact or OAuth token exchange request, the Verifier MUST use the nonce segment to recover or authenticate the expected Verifier Challenge context. It MUST reject the returned artifact if the returned challenge value is not exactly the issued or reconstructed challenge value, if the Verifier Challenge is expired, if the nonce is unknown or fails verifier-protected authentication, if the route or method does not match, or if replay policy fails.
-
-#### Verifier Challenge Format
-
-The `proof.challenge` object carries the value the Agent gives to the Wallet and the time after which the Verifier will reject it:
-
-```json
-{
-  "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "expires_at": "2026-05-06T18:45:00Z"
-}
-```
-
-The canonical `value` is:
-
-```text
-x401:<base64url-utf8-verifier-id>:<nonce>
-```
-
-The Verifier Challenge value has three colon-delimited segments:
-
-Name | Segment | Definition
----- | ------- | ----------
-Prefix | `x401` | REQUIRED. Domain-separates x401 Verifier Challenge values from other nonce or challenge values a Wallet may receive.
-Verifier identifier | `<base64url-utf8-verifier-id>` | REQUIRED. The Verifier identifier encoded as UTF-8 and then base64url without padding. The decoded value is typically an HTTPS origin, domain-based identifier, or DID controlled by the Verifier.
-Nonce | `<nonce>` | REQUIRED. An opaque verifier-generated nonce segment encoded as base64url without padding. It MUST either identify stored Verifier Challenge state or carry verifier-protected Verifier Challenge state. It MUST contain or be bound to at least 128 bits of cryptographic randomness.
-
-The Verifier constructs the entire `value`, including the `x401:` prefix. The encoded verifier identifier and nonce MUST omit padding. The nonce segment MUST let the Verifier triangulate back to the exact requirements presented to the Agent, including route, method, Credential Query Requirement, policy, expiration, expected Agent Identifier rules, accepted retry mechanisms, and replay status. The payload does not duplicate the verifier identifier or nonce as separate fields. The Verifier MUST reject a presentation if the challenge value, embedded or expected verifier identifier, nonce, or expiration does not match the Verifier Challenge expected for the protected route.
-
-The Agent MUST use `proof.challenge.value` exactly as the OpenID4VP `nonce` in its Presentation Request. The Agent MUST NOT add the `x401:` prefix, re-encode, hash, trim, normalize, or transform this value before giving it to the Wallet.
-
-#### Stateless Continuation
-
-x401 deployments MAY make the interaction between the protected resource and the token endpoint stateless by making the challenge value nonce-state-encapsulating.
-
-In a stateless deployment:
-
-1. The x401 payload carried in `PROOF-REQUIRED` contains only information the Agent needs to continue, such as the Credential Query Requirement, Verifier Challenge, issuer trust reference, token exchange metadata, and payment hints.
-2. The nonce segment of the Verifier Challenge MUST carry or reference the verifier-protected Verifier Challenge state needed to validate a VP Artifact or issue a Verification Token.
-3. A [[ref: Verification Token]], when issued, MUST be verifier-protected and carry or reference the route, policy, Agent binding, expiration, and satisfied requirements needed for later protected-route evaluation.
-4. The protected resource server and token endpoint MAY be separate components if they share the keys, policies, or verification services needed to validate these artifacts.
-
-Stateless processing does not remove every need for storage. Verifiers MAY still keep server-side state for replay detection, token revocation, audit, rate limiting, or one-time Verifier Challenge enforcement. If a deployment requires strict one-time-use Verifier Challenges, it generally needs replay state shared by the components that accept returned challenge values.
+::: note Stateless operation
+A Verifier MAY operate statelessly. Because the OpenID4VP `nonce` is the value echoed back and cryptographically bound in the returned presentation, a Verifier MAY make the `nonce` a verifier-protected, self-contained value that encodes the route, method, policy, and expiry it needs to validate the retry without server-side storage. How that value is constructed, whether one-time-use replay protection is enforced with a small shared cache, and how any response-encryption decryption key is managed are deployment decisions left to the implementer.
+:::
 
 ### Credential Acquisition Guidance
 
-When a Verifier wants to disclose which issuers, authorities, roles, activities, credential schemas, or credential types can satisfy a proof requirement, it provides a `proof.issuers.trust_establishment_url`.
+When a Verifier wants to disclose which issuers, authorities, roles, activities, credential schemas, or credential types can satisfy a proof requirement, it sets the `trust_establishment` member.
 
-That URL points to a [[ref: Issuer Trust List]]. The Agent MAY use the referenced document to discover candidate credentials or credential issuers, and the Wallet MAY use it to help select credentials that are likely to satisfy the Verifier.
+Its value is an HTTPS URL pointing to an [[ref: Issuer Trust List]]. The Agent MAY use the referenced document to discover candidate credentials or credential issuers, and the Wallet MAY use it to help select credentials that are likely to satisfy the Verifier.
 
 If the referenced Issuer Trust List identifies OpenID4VCI Credential Issuer Identifiers, Agents resolve those issuer identifiers using the OpenID4VCI issuer metadata discovery rules. See OpenID4VCI Section 12.2.2: <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html>.
 
@@ -640,86 +573,44 @@ Name | Definition
 
 If proof is accepted but payment is still unsatisfied, the Verifier responds with `402 Payment Required` using the payment protocol indicated by the verifier.
 
-## Agent-Generated Verifiable Presentation
+## Obtaining a Presentation
 
-This leg defines how the Agent turns the x401 payload into a wallet-facing OpenID4VP Authorization Request. The Agent keeps the Verifier's Credential Query Requirement and Verifier Challenge value intact, uses the Verifier Challenge value as the OpenID4VP `nonce`, and identifies itself as the OpenID4VP client.
+This leg defines how the Agent obtains a presentation for the Verifier-composed request at the payload's `presentation_requirements` member. The Verifier authored and signed the request and is its relying party; the Agent does not compose it and is not, by default, its audience. The Agent's task is to get the request executed and to acquire the resulting [[ref: Presentation Result]].
 
-```json
-{
-  "response_type": "vp_token",
-  "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "dcql_query": {
-    "credentials": [
-      {
-        "id": "financial_customer",
-        "format": "jwt_vc_json"
-      }
-    ]
-  },
-  "response_uri": "https://agent.example/wallet/callback/7c9e"
-}
-```
+An Agent obtains a presentation by one of the following, all of which carry the same Verifier-composed request unchanged:
 
-When the x401 payload contains `proof.scope` instead of `proof.dcql_query`, the Agent uses that value as the OpenID4VP `scope` and does not include `dcql_query`:
+1. **Native invocation.** In an environment with the Digital Credentials API, the Agent invokes the request directly:
 
-```json
-{
-  "response_type": "vp_token",
-  "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "scope": "financial_customer",
-  "response_uri": "https://agent.example/wallet/callback/7c9e"
-}
-```
+   ```js
+   const result = await navigator.credentials.get({ digital: payload.presentation_requirements });
+   // result => { protocol, data }
+   ```
 
-### OpenID4VP Boundary and Reuse
+   A native platform credential handler MAY be used in place of the Web API where an equivalent mechanism exists.
 
-x401 stays intentionally narrow. It defines the HTTP proof requirement at the protected route and the payload that carries proof requirements, Verifier Challenge material, issuer trust references, token exchange metadata, and payment hints. It does not define the Wallet transport or require the Verifier to become the Wallet-facing presentation requester.
+2. **Relay to a Wallet or remote service.** The Agent forwards `presentation_requirements`, or a single selected entry from `presentation_requirements.requests`, to a web wallet or remote presentation service that can execute the request and return a presentation result.
 
-The protocol boundary is:
+3. **Remote, out-of-band generation.** When the Agent's environment cannot invoke the request directly — for example, a consumer AI client without a credential handler — the request can be handed to a remote fulfillment surface (such as a verifier-hosted page) that invokes the Digital Credentials API in its own context and generates the presentation. The Agent then acquires the result and replays the protected route. See [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment).
 
-1. x401 governs the protected-route exchange that carries the `PROOF-REQUIRED` header containing the x401 payload.
-2. The x401 payload supplies a Credential Query Requirement and Verifier Challenge. It is not a complete OpenID4VP Authorization Request and MUST NOT be treated as one.
-3. The Agent creates the wallet-facing Presentation Request as an OpenID4VP Authorization Request.
-4. The Agent's Presentation Request MUST include the exact x401 Credential Query Requirement as either `dcql_query` or `scope`, matching the query member present in the x401 payload, and MUST use the exact x401 Verifier Challenge value as `nonce`.
-5. The Agent's Presentation Request MUST identify the Agent as the OpenID4VP client.
-6. x401 resumes when the Agent retries the original protected route with a VP Artifact or Verification Token.
-7. `proof.issuers` can help Agents discover acceptable issuers, but it never delegates verification behavior to the Agent. When the referenced Issuer Trust List identifies OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery.
+In every case the resulting presentation is bound to the Verifier as relying party, not to the Agent.
 
-If a deployment uses a Wallet, browser, device, or application that is separate from the Agent, that deployment MUST use an OpenID4VP response delivery mechanism that returns the presentation result to the Agent. The response delivery endpoint, such as an OpenID4VP `redirect_uri` or `response_uri`, MUST be controlled by the Agent.
+### Composed Request Invariants
 
-#### Agent-Created Presentation Request
+The composed request is authored and signed by the Verifier. The Agent treats it as opaque:
 
-The Agent MUST provide the Wallet with a valid OpenID4VP Authorization Request. The Agent-created request MUST include at least:
+1. The Agent MUST NOT modify any entry in `presentation_requirements`. The request signature binds its contents, so any modification invalidates it.
+2. When `presentation_requirements.requests` contains more than one entry, the Agent MAY select an entry by `protocol` or by the credential formats the chosen Wallet or handler supports, and MAY pass the entries through unchanged for the handler to select.
+3. The Agent MUST arrange to acquire the [[ref: Presentation Result]] returned for the request, whether it invokes the request itself, relays it, or acquires a remotely generated result.
 
-1. a valid `response_type` for returning a verifiable presentation;
-2. a `client_id` that identifies the Agent Identifier used with the protected-route request;
-3. the exact x401 `proof.challenge.value` as the OpenID4VP `nonce`;
-4. the exact x401 Credential Query Requirement as the OpenID4VP `dcql_query` or `scope`, matching the query member present in the x401 payload;
-5. a `response_uri` or `redirect_uri` that delivers the Wallet's presentation result to the Agent;
-6. any required `client_metadata`, key material, supported VP formats, encryption preferences, or request signing information required by the Wallet or by the OpenID4VP profile in use;
-7. any Agent-generated `state` value needed for Agent-side correlation.
+A Verifier composing `presentation_requirements`:
 
-The x401 payload does not contain a separate `presentation_request` object. The fixed request construction rules above are part of the protocol and are derived from `proof.presentation_protocol`; repeating them in each x401 payload would be redundant. Verifier-specific proof requirements should be expressed through the Credential Query Requirement, Verifier Challenge, OAuth metadata, or the Verifier's normal validation policy.
+1. MUST make each entry a valid OpenID4VP request for the Digital Credentials API using `protocol: "openid4vp-v1-signed"`.
+2. MUST sign the request and set the `client_id` and `expected_origins` required for a signed DC API request, so that the Verifier is the relying party and the binding holds regardless of which origin invokes the request.
+3. MAY request response encryption (for example, a `dc_api.jwt` response mode with encryption keys in `client_metadata`) or omit it. Response encryption is OPTIONAL in x401.
 
-The Agent MAY add Wallet UX metadata, request signing, encryption parameters, or stricter local handling requirements, but it MUST NOT weaken or omit the x401 Credential Query Requirement and MUST NOT alter the x401 Verifier Challenge value.
+x401 does not restate the field-level rules for composing, signing, or invoking a Digital Credentials request; those are defined by the W3C Digital Credentials API and by OpenID4VP for the DC API. x401 requires only that `presentation_requirements` is a valid signed OpenID4VP request for the DC API, because that is what supplies the verifier binding x401 relies on.
 
-The Verifier's identifier appears inside the Verifier Challenge. The Agent MUST NOT use the Verifier's identifier as the Wallet-facing `client_id` unless the Agent and Verifier are the same entity for that presentation transaction.
-
-### OpenID4VP Request Construction Rules
-
-x401 Agents:
-
-1. MUST create an OpenID4VP Authorization Request that is valid under OpenID4VP.
-2. MUST preserve the exact OpenID4VP parameter names and MUST NOT define x401 aliases for `response_uri`, `redirect_uri`, `response_mode`, `nonce`, `state`, `dcql_query`, `scope`, or `client_metadata`.
-3. MUST include an OpenID4VP `client_id` for the Agent.
-4. MUST include a valid OpenID4VP `response_type` for the chosen flow.
-5. MUST include exactly one OpenID4VP credential query parameter: `dcql_query` containing the exact x401 `proof.dcql_query` when present, or `scope` containing the exact x401 `proof.scope` when present.
-6. MUST use `nonce` containing the exact x401 `proof.challenge.value`.
-7. MUST arrange for the Wallet response to return to the Agent.
-8. SHOULD use short expiry windows when a signed request object is used.
-9. MAY use `request_uri` or signed request objects for the Agent-created Presentation Request, but those objects are created by the Agent and are not supplied by the x401 payload.
+`trust_establishment` can help Agents discover acceptable issuers, but it never delegates verification behavior to the Agent, and it does not decide validity — the signed request's `dcql_query` and `trusted_authorities` do. When the referenced Issuer Trust List identifies OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery.
 
 ## Verifiable Presentation Delivery
 
@@ -733,17 +624,29 @@ PROOF-PRESENTATION: <base64url-vp-artifact-json>
 
 ### VP Artifact
 
-After the Wallet returns a presentation result, the Agent packages the result as a VP Artifact for protected-route retry or OAuth token exchange.
+After obtaining a [[ref: Presentation Result]], the Agent packages it as a VP Artifact for protected-route retry or OAuth token exchange. The VP Artifact carries the presentation result either inline or as a [[ref: Presentation Reference]].
 
 #### General Structure
 
+An inline VP Artifact carries the Digital Credentials API result `{ protocol, data }` directly:
+
 ```json
 {
-  "agent_id": "did:web:agent.example",
-  "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
   "request_id": "proof-template-financial-customer-v1",
-  "vp_token": "<wallet-returned-vp-token>",
-  "presentation_submission": {}
+  "response": {
+    "protocol": "openid4vp-v1-signed",
+    "data": "<wallet-returned-presentation-result>"
+  }
+}
+```
+
+A by-reference VP Artifact carries a URL the Verifier dereferences to fetch the presentation result, for results that exceed header size limits or are generated at a remote location:
+
+```json
+{
+  "request_id": "proof-template-financial-customer-v1",
+  "presentation_uri": "https://bank.example.com/.well-known/x401/presentations/abc123",
+  "expires_at": "2026-05-06T18:50:00Z"
 }
 ```
 
@@ -751,14 +654,28 @@ After the Wallet returns a presentation result, the Agent packages the result as
 
 Name | Definition
 ---- | ----------
-`agent_id` | REQUIRED. The Agent Identifier represented by the OpenID4VP `client_id` in the Agent-created Presentation Request.
-`challenge` | REQUIRED. The exact `proof.challenge.value` from the x401 payload.
-`request_id` | OPTIONAL. The x401 `proof.request_id`, when present.
-`vp_token` | REQUIRED. The verifiable presentation material returned by the Wallet.
-`presentation_submission` | OPTIONAL. The OpenID4VP presentation submission metadata returned by the Wallet when applicable.
-`state` | OPTIONAL. Agent-generated correlation state returned by the Wallet when applicable.
+`response` | REQUIRED unless `presentation_uri` is present. The [[ref: Presentation Result]] returned by the Wallet, as the `{ protocol, data }` object produced by the Digital Credentials API.
+`presentation_uri` | REQUIRED unless `response` is present. An HTTPS URL the Verifier dereferences with `GET` to fetch the [[ref: Presentation Result]]. The Verifier MUST issue a unique `presentation_uri` value for each presentation and MUST NOT reuse one across presentations. See [Presentation by Reference](#presentation-by-reference).
+`expires_at` | OPTIONAL. RFC 3339 time after which the `presentation_uri` is no longer valid.
+`request_id` | OPTIONAL. The x401 `request_id`, when present.
+`agent_id` | OPTIONAL. An [[ref: Agent Identifier]] for the HTTP caller, when the deployment binds the Agent to the retry. See [Agent Binding Options](#agent-binding-options).
 
-The Verifier MUST NOT treat the `agent_id`, `challenge`, or `request_id` values inside the VP Artifact as authoritative by themselves. They are carried so the Verifier can correlate the presentation with its expected Verifier Challenge context. The Verifier remains responsible for authenticating the Agent Identifier and validating the presentation binding.
+A VP Artifact MUST contain exactly one of `response` or `presentation_uri`.
+
+The Verifier MUST NOT treat the `request_id` or `agent_id` values inside the VP Artifact as authoritative by themselves. They are carried so the Verifier can correlate the retry. Correlation between the presentation and the issued request is established by the OpenID4VP `nonce` echoed inside the presentation result. The Verifier remains responsible for validating the presentation binding and, when it binds the Agent, authenticating the Agent Identifier.
+
+### Presentation by Reference
+
+A presentation result can be larger than an HTTP header field comfortably carries, and a remotely generated result may not be held by the Agent at all. For these cases the VP Artifact MAY carry a `presentation_uri` instead of an inline `response`. The Verifier dereferences the URL to obtain the same `{ protocol, data }` presentation result it would otherwise have received inline.
+
+When a VP Artifact carries `presentation_uri`:
+
+1. The `presentation_uri` MUST be an `https` URL.
+2. The Verifier MUST issue a unique `presentation_uri` for each presentation and MUST NOT reuse a URI value across presentations. Uniqueness per presentation is what lets the Verifier treat the reference as single-use and bind it to one retry.
+3. The Verifier fetches the presentation result with an HTTP `GET` and processes it exactly as if it had been supplied inline as `response`. The fetched presentation is self-authenticating — it is validated against the issued request's `nonce`, `client_id`, and `expected_origins` like any other — so a substituted or tampered result is rejected by normal proof validation without a separate integrity digest.
+4. The reference SHOULD be short-lived and scoped to the route and retry it serves.
+
+This same mechanism lets a remote fulfillment surface generate a presentation, publish it at a `presentation_uri`, and let the Agent replay the protected route with only the reference. See [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment).
 
 ### x401 Error Object
 
@@ -769,11 +686,10 @@ When a Verifier reports that an x401 proof presentation failed or could not be p
 ```json
 {
   "scheme": "x401",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "error": "invalid_presentation",
   "error_description": "The presentation did not satisfy the route proof requirement.",
-  "request_id": "proof-template-financial-customer-v1",
-  "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ"
+  "request_id": "proof-template-financial-customer-v1"
 }
 ```
 
@@ -786,8 +702,7 @@ Name | Definition
 `error` | REQUIRED. A verifier-defined error code. The value SHOULD be a short ASCII token suitable for logs and programmatic handling.
 `error_description` | OPTIONAL. Human-readable diagnostic text.
 `error_uri` | OPTIONAL. HTTPS URL identifying documentation for the error.
-`request_id` | OPTIONAL. The x401 `proof.request_id`, when the error can be correlated to a proof template.
-`challenge` | OPTIONAL. The Verifier Challenge value, when the error can be safely correlated to a challenge.
+`request_id` | OPTIONAL. The x401 `request_id`, when the error can be correlated to a proof template.
 
 The x401 Error Object describes the x401 proof branch only. The HTTP status code continues to describe the overall response.
 
@@ -800,7 +715,7 @@ When an Agent has a Verification Token and the protected route already uses the 
 ```json
 {
   "scheme": "x401",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "token_type": "Bearer",
   "access_token": "<x401-verification-token>"
 }
@@ -827,7 +742,7 @@ When retrying with proof material directly, the Agent uses `PROOF-PRESENTATION`:
 PROOF-PRESENTATION: <base64url-vp-artifact-json>
 ```
 
-The `PROOF-PRESENTATION` value is the base64url-encoded UTF-8 JSON serialization of the VP Artifact, using the same no-padding encoding as the x401 payload.
+The `PROOF-PRESENTATION` value is the base64url-encoded UTF-8 JSON serialization of the VP Artifact, using the same no-padding encoding as the x401 payload. The VP Artifact carries the presentation result inline or as a [[ref: Presentation Reference]]; for large presentations the Agent SHOULD use the reference form to keep the header within server and intermediary size limits.
 
 When retrying with a [[ref: Verification Token]], the Agent either uses the route's normal `Authorization` request header or carries an x401 Token Object in `PROOF-PRESENTATION`.
 
@@ -853,20 +768,18 @@ An Agent receiving an HTTP response with a `PROOF-REQUIRED` proof requirement:
 1. MUST treat the response as a proof requirement.
 2. MUST extract the `PROOF-REQUIRED` field value and base64url-decode it as a UTF-8 JSON [[ref: x401 Payload]].
 3. MUST validate the decoded payload structure and process the `proof` object.
-4. MUST verify that `proof.presentation_protocol` is `openid4vp`.
-5. MUST create a wallet-facing OpenID4VP Presentation Request that includes the x401 Credential Query Requirement as `dcql_query` when `proof.dcql_query` is present or as `scope` when `proof.scope` is present.
-6. MUST use the exact x401 `proof.challenge.value` as the Presentation Request's `nonce`.
-7. MUST identify itself to the Wallet using an Agent Identifier that can also be bound to the protected-route retry.
-8. MAY use `proof.issuers.trust_establishment_url`, when present, to filter candidate credentials or guide acquisition.
-9. MUST NOT treat any Agent-side interpretation of the Issuer Trust List as proof of verifier acceptance.
-10. MUST send the OpenID4VP Presentation Request to a Wallet or local presentation subsystem to fulfill the proof requirement.
-11. MUST package the Wallet's presentation result as a VP Artifact.
-12. MUST retry the same route that produced the x401 proof requirement with one of:
+4. MUST treat `presentation_requirements` as the Verifier-composed [[ref: Digital Credentials Request]] and MUST NOT modify any of its entries.
+5. MUST obtain a [[ref: Presentation Result]] for `presentation_requirements` by invoking it through a native credential method, relaying it to a Wallet or remote service, or acquiring a remotely generated result.
+6. MAY select among multiple `presentation_requirements.requests` entries by protocol or supported credential format when more than one is present.
+7. MAY use `trust_establishment`, when present, to filter candidate credentials or guide acquisition.
+8. MUST NOT treat any Agent-side interpretation of the Issuer Trust List as proof of verifier acceptance.
+9. MUST package the presentation result as a VP Artifact, inline or as a [[ref: Presentation Reference]].
+10. MUST retry the same route that produced the x401 proof requirement with one of:
     - a VP Artifact in a `PROOF-PRESENTATION` request header,
     - a Verification Token carried as an x401 Token Object in a `PROOF-PRESENTATION` request header, or
     - a Verification Token in the route's normal `Authorization` request header when the deployment specifies that the token is an upgraded or replacement application authorization credential.
-13. MUST NOT replace an existing application `Authorization` credential with an x401 Verification Token unless the deployment explicitly defines the returned token as valid for that route's ordinary authorization processing.
-14. MUST treat a `PROOF-RESPONSE` carrying an x401 Error Object as an x401 proof failure for the route-scoped proof attempt, regardless of the HTTP status code.
+11. MUST NOT replace an existing application `Authorization` credential with an x401 Verification Token unless the deployment explicitly defines the returned token as valid for that route's ordinary authorization processing.
+12. MUST treat a `PROOF-RESPONSE` carrying an x401 Error Object as an x401 proof failure for the route-scoped proof attempt, regardless of the HTTP status code.
 
 ### Verifier Processing Rules
 
@@ -875,40 +788,35 @@ A Verifier implementing x401:
 1. MUST include `PROOF-REQUIRED: <base64url-x401-payload>` when proof is required or advertised.
 2. MUST include a valid base64url-encoded x401 payload in `PROOF-REQUIRED`.
 3. MUST use an HTTP status code appropriate for the overall response and MUST NOT rely on the status code alone to convey x401 proof state.
-4. MUST set `proof.presentation_protocol` to `openid4vp`.
-5. MUST include exactly one Credential Query Requirement: either `proof.dcql_query` or `proof.scope`.
-6. MUST include a Verifier Challenge in `proof.challenge`.
-7. MUST include OAuth token exchange metadata in `proof.oauth`.
-8. SHOULD provide `proof.issuers.trust_establishment_url` when issuer approval policy is useful to disclose to Agents.
-9. MUST NOT enumerate verifier-approved issuers inline in the x401 payload.
-10. MUST bind the Verifier Challenge to the route, method, policy, expiration, and expected nonce, and MUST either store or reconstruct enough Verifier Challenge context to recognize the challenge value on return.
-11. MUST validate VP Artifacts according to the proof validation rules in this specification and the credential format rules it relies upon.
-12. MUST evaluate issuer trust, status, revocation, and policy constraints independently of any Agent-side interpretation of the Issuer Trust List.
-13. MUST accept a VP Artifact in a `PROOF-PRESENTATION` request header for protected-route retry.
-14. MAY issue a Verification Token through the OAuth token endpoint after validating the presented VP Artifact.
-15. MUST validate Verification Tokens on protected-route retry according to token scope, audience, expiration, Agent binding, and satisfied requirement metadata, whether the token arrives in `Authorization` or as an x401 Token Object in `PROOF-PRESENTATION`.
-16. MUST bind any Verification Token carried in `PROOF-PRESENTATION` to the existing application caller, credential, client, key, or Agent Identifier required by the protected route when an `Authorization` header is also present.
-17. SHOULD return `PROOF-RESPONSE: <base64url-x401-error-object>` if proof is presented but policy satisfaction fails or the presentation or token cannot be processed.
-18. MUST use `402 Payment Required` separately if payment is required and remains unsatisfied.
+4. MUST include a `presentation_requirements` whose entries are valid `openid4vp-v1-signed` OpenID4VP requests for the DC API.
+5. MUST sign each request and set the `client_id` and `expected_origins` that make the Verifier the relying party for the request.
+6. MUST include OAuth token exchange metadata in `oauth`.
+7. SHOULD provide `trust_establishment` when issuer approval policy is useful to disclose to Agents.
+8. MUST NOT enumerate verifier-approved issuers inline in the x401 payload.
+9. MUST validate presentations according to the proof validation rules in this specification and the credential format rules it relies upon, dereferencing a [[ref: Presentation Reference]] when one is supplied.
+10. MUST evaluate issuer trust, status, revocation, and policy constraints independently of any Agent-side interpretation of the Issuer Trust List.
+11. MUST accept a VP Artifact in a `PROOF-PRESENTATION` request header for protected-route retry, in both its inline and by-reference forms.
+12. MAY issue a Verification Token through the OAuth token endpoint after validating the presented VP Artifact.
+13. MUST validate Verification Tokens on protected-route retry according to token scope, audience, expiration, any Agent binding, and satisfied requirement metadata, whether the token arrives in `Authorization` or as an x401 Token Object in `PROOF-PRESENTATION`.
+14. MUST bind any Verification Token carried in `PROOF-PRESENTATION` to the existing application caller, credential, client, key, or Agent Identifier required by the protected route when an `Authorization` header is also present.
+15. SHOULD return `PROOF-RESPONSE: <base64url-x401-error-object>` if proof is presented but policy satisfaction fails or the presentation or token cannot be processed.
+16. MUST use `402 Payment Required` separately if payment is required and remains unsatisfied.
 
 ### Proof Validation
 
-When a Verifier receives a VP Artifact directly on a protected-route retry or through the OAuth token endpoint, it MUST validate the presentation using the route's expected x401 Verifier Challenge context.
+When a Verifier receives a VP Artifact directly on a protected-route retry or through the OAuth token endpoint, it MUST validate the presentation against the request it composed for the route. When the VP Artifact is a [[ref: Presentation Reference]], the Verifier first dereferences `presentation_uri` to obtain the presentation result, then validates that result exactly as if it had been supplied inline.
 
 The Verifier MUST:
 
-1. recover the expected Verifier Challenge context, including route, method, policy, Credential Query Requirement, Verifier identifier, nonce, challenge value, expiration, Agent Identifier rules, and replay requirements;
-2. determine the Agent Identifier for the HTTP caller using the route's accepted Agent Identifier policy;
-3. reject the presentation if it cannot bind the HTTP caller to an Agent Identifier acceptable for the route;
-4. verify that the VP Artifact's `challenge` exactly matches the issued or reconstructed Verifier Challenge;
-5. verify that the Wallet's presentation proof is cryptographically protected according to the credential and presentation formats in use;
-6. verify that the presentation is bound to the authenticated Agent Identifier as its audience, client, or intended target;
-7. verify that the presentation's OpenID4VP `nonce` equals the exact `proof.challenge.value` from the x401 payload;
-8. verify that the credentials and disclosed claims satisfy the route's Credential Query Requirement; when the requirement is a `scope`, the Verifier MUST validate against the credential policy represented by that scope, not merely the presence of the scope value;
-9. verify issuer trust, credential status, revocation, expiration, assurance, and any additional route policy;
-10. enforce replay, one-time-use, and expiration requirements for the Verifier Challenge.
+1. recover the route, method, and policy context for the request it composed, by whatever stateful or stateless means it uses;
+2. verify that the presentation proof is cryptographically protected according to the credential and presentation formats in use;
+3. verify that the presentation is bound to the Verifier as relying party, through the request signature, `client_id`, and `expected_origins` of the signed request;
+4. verify that the presentation's OpenID4VP `nonce` is the value the Verifier issued for the request, applying its freshness and replay policy;
+5. verify that the credentials and disclosed claims satisfy the `dcql_query` carried in the request;
+6. verify issuer trust, credential status, revocation, expiration, assurance, and any additional route policy;
+7. when the deployment binds the Agent, determine and verify the [[ref: Agent Identifier]] for the HTTP caller and reject the retry if it cannot be bound; see [Agent Binding Options](#agent-binding-options).
 
-The Verifier MUST NOT accept a presentation that is bound only to the Verifier unless the Verifier is also the Agent for the wallet-facing presentation transaction. In the default x401 model, the Wallet presents to the Agent, and the Verifier authorizes resource access by checking that the presentation was intended for the same Agent that is retrying the protected route.
+Because the Verifier is the relying party for the composed request, the returned presentation is bound to the Verifier, not to the Agent. Agent binding is OPTIONAL and, when used, is an additional check layered over this validation rather than a property of the presentation itself.
 
 ## Access Token Acquisition
 
@@ -926,7 +834,7 @@ subject_token=<base64url-vp-artifact-json>
 
 ### OAuth Token Exchange
 
-An Agent MAY exchange a VP Artifact for a [[ref: Verification Token]] at the OAuth token endpoint supplied in `proof.oauth.token_endpoint`.
+An Agent MAY exchange a VP Artifact for a [[ref: Verification Token]] at the OAuth token endpoint supplied in `oauth.token_endpoint`.
 
 The token request uses OAuth 2.0 Token Exchange. The Agent MUST use:
 
@@ -934,7 +842,7 @@ The token request uses OAuth 2.0 Token Exchange. The Agent MUST use:
 - `subject_token_type=urn:x401:params:oauth:token-type:vp_artifact`
 - `subject_token=<base64url-vp-artifact-json>`
 
-The Agent SHOULD include the `resource` or `audience` value from `proof.oauth` when present. If neither value is present, the Agent MAY use the original protected resource URL as the OAuth `resource` value.
+The Agent SHOULD include the `resource` or `audience` value from `oauth` when present. If neither value is present, the Agent MAY use the original protected resource URL as the OAuth `resource` value.
 
 ```http
 POST /oauth/token HTTP/1.1
@@ -947,14 +855,14 @@ subject_token=<base64url-vp-artifact-json>&
 resource=https%3A%2F%2Fbank.example.com%2Faccounts%2Fapplications
 ```
 
-The token endpoint MAY require normal OAuth client authentication. If client authentication is used, the authenticated OAuth client MUST bind to the same Agent Identifier that appears as the intended audience of the Wallet presentation.
+The submitted VP Artifact MAY carry the presentation result inline or as a [[ref: Presentation Reference]]; when it is a reference, the token endpoint dereferences it as described in [Presentation by Reference](#presentation-by-reference). The token endpoint MAY require normal OAuth client authentication. If the deployment binds the Agent and client authentication is used, the authenticated OAuth client MUST bind to the same Agent Identifier the deployment requires for the retry.
 
 The token endpoint MUST process the submitted VP Artifact using the same proof validation rules that apply to direct protected-route retry. In particular, it MUST verify that:
 
-1. the VP is cryptographically valid and bound to the authenticated Agent Identifier;
-2. the credential material satisfies the Credential Query Requirement for the requested resource;
-3. the Verifier Challenge value contains or resolves to the token endpoint's Verifier identifier and the expected cryptographic nonce;
-4. the Verifier Challenge is not expired, replayed, or outside the route, method, policy, or resource context requested.
+1. the presentation is cryptographically valid and bound to the Verifier as relying party through the signed request's `client_id` and `expected_origins`;
+2. the credential material satisfies the `dcql_query` carried in the request for the requested resource;
+3. the presentation's OpenID4VP `nonce` is one the Verifier issued, applying its freshness and replay policy;
+4. when the deployment binds the Agent, the presentation and retry bind to the required Agent Identifier.
 
 If verification succeeds and the Verifier chooses token retry, the token endpoint returns an OAuth-compatible successful access token response:
 
@@ -983,7 +891,6 @@ For Verification Tokens defined by this specification, the token endpoint MUST r
     ],
     "resource": "https://bank.example.com/accounts/applications",
     "method": "POST",
-    "challenge": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
     "expires_at": "2026-05-06T18:50:00Z"
   }
 }
@@ -1023,37 +930,35 @@ A [[ref: Verification Token]] records the Verifier's decision that a presentatio
 
 A Verifier MAY issue a Verification Token after accepting a VP Artifact. The token:
 
-1. MUST be issued to the Agent Identifier that was bound during proof validation;
-2. MUST NOT rely on the credential subject as the token holder identity unless the credential subject is also the Agent;
-3. MUST be scoped to the Verifier audience and to the route, policy, action, resource, or resource class for which proof was accepted;
-4. MUST expire, and SHOULD be short-lived;
-5. SHOULD include a unique token identifier and support replay detection and revocation;
-6. SHOULD identify the `request_id` and `satisfied_requirements` accepted by the Verifier;
-7. SHOULD identify the Verifier Challenge, Verifier identifier, resource, method, and proof time used to issue the token.
+1. when the deployment binds the Agent, MUST be issued to the [[ref: Agent Identifier]] bound during the retry, and MUST NOT rely on the credential subject as the token holder identity unless the credential subject is also the Agent;
+2. MUST be scoped to the Verifier audience and to the route, policy, action, resource, or resource class for which proof was accepted;
+3. MUST expire, and SHOULD be short-lived;
+4. SHOULD include a unique token identifier and support replay detection and revocation;
+5. SHOULD identify the `request_id` and `satisfied_requirements` accepted by the Verifier;
+6. SHOULD identify the Verifier identifier, resource, method, and proof time used to issue the token.
 
 When a Verification Token is represented as a JWT, its exact claim set is deployment-specific. The token SHOULD include:
 
 - `iss` identifying the Verifier or authorization server;
-- `sub` identifying the Agent;
+- `sub` identifying the Agent, when the deployment binds the Agent;
 - `aud` identifying the protected resource server or Verifier audience;
 - `exp`, `iat`, and `jti`;
 - `client_id` identifying the Agent when useful for OAuth infrastructure;
 - `scope`, `resource`, or method/action claims used for access decisions;
 - `x401_request_id`;
 - `x401_satisfied_requirements`;
-- `x401_challenge` or a digest of the challenge value;
-- `x401_query_hash` or a verifier-defined reference to the Credential Query Requirement that was satisfied.
+- `x401_query_hash` or a verifier-defined reference to the credential query that was satisfied.
 
 #### Reuse Across Routes
 
-OpenID4VP `state`, presentation `nonce`, DCQL Credential Query `id` values, and OpenID4VP `scope` values are useful for request-response correlation, holder binding, or wallet-facing query selection inside a single presentation transaction. They are not, by themselves, stable semantic identifiers for cross-route token reuse.
+OpenID4VP `state`, presentation `nonce`, and DCQL Credential Query `id` values are useful for request-response correlation, holder binding, or wallet-facing query selection inside a single presentation transaction. They are not, by themselves, stable semantic identifiers for cross-route token reuse.
 
-x401 uses `proof.request_id` and `proof.satisfied_requirements` for reusable proof semantics. A Verifier MAY accept a Verification Token issued for one route on another route only when:
+x401 uses `request_id` and `satisfied_requirements` for reusable proof semantics. A Verifier MAY accept a Verification Token issued for one route on another route only when:
 
 1. the token is valid for the Verifier audience and current protected resource;
 2. the token has not expired or been revoked;
-3. the token is issued to the current Agent Identifier;
-4. the token's accepted proof requirements cover the later route's `proof.satisfied_requirements`;
+3. when the deployment binds the Agent, the token is issued to the current Agent Identifier;
+4. the token's accepted proof requirements cover the later route's `satisfied_requirements`;
 5. any freshness, status, assurance, and policy constraints still hold.
 
 Agents MAY use the `x401.satisfied_requirements` metadata returned with a Verification Token to decide whether to try the token on a later route. The Verifier remains authoritative and SHOULD return a new x401 proof requirement when the token is valid but does not satisfy the later route.
@@ -1082,53 +987,37 @@ Decoded x401 payload, shown for readability:
 ```json
 {
   "scheme": "x401",
-  "version": "0.1.0",
-  "proof": {
-    "presentation_protocol": "openid4vp",
-    "dcql_query": {
-      "credentials": [
-        {
-          "id": "financial_customer",
-          "format": "jwt_vc_json",
-          "meta": {
-            "type_values": ["FinancialCustomerCredential"]
-          },
-          "claims": [
-            {
-              "path": ["credentialSubject", "assurance_level"],
-              "values": ["VC-AL2", "VC-AL3"]
-            }
-          ]
+  "version": "0.2.0",
+  "presentation_requirements": {
+    "requests": [
+      {
+        "protocol": "openid4vp-v1-signed",
+        "data": {
+          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
         }
-      ]
-    },
-    "challenge": {
-      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-      "expires_at": "2026-05-06T18:45:00Z"
-    },
-    "oauth": {
-      "token_endpoint": "https://bank.example.com/oauth/token"
-    },
-    "issuers": {
-      "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
-    },
-    "request_id": "proof-template-financial-customer-v1",
-    "satisfied_requirements": [
-      "urn:example:x401:satisfaction:financial-customer:v1"
+      }
     ]
-  }
+  },
+  "oauth": {
+    "token_endpoint": "https://bank.example.com/oauth/token"
+  },
+  "trust_establishment": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1",
+  "request_id": "proof-template-financial-customer-v1",
+  "satisfied_requirements": [
+    "urn:example:x401:satisfaction:financial-customer:v1"
+  ]
 }
 ```
 
-#### Agent-Created Presentation Request Fragment
-
-The Agent creates an OpenID4VP Authorization Request. The fragment below shows the x401-required OpenID4VP fields; deployments add the remaining fields required by the selected OpenID4VP response mode, client identifier scheme, and signing or encryption profile.
+The signed OpenID4VP request inside `presentation_requirements.requests[0].data.request`, decoded for readability, is authored and signed by the Verifier:
 
 ```json
 {
   "response_type": "vp_token",
-  "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
+  "response_mode": "dc_api",
+  "client_id": "x509_san_dns:bank.example.com",
+  "expected_origins": ["https://bank.example.com"],
+  "nonce": "uX7Vq3mZJH6MeN0qz2L7SQ",
   "dcql_query": {
     "credentials": [
       {
@@ -1146,49 +1035,17 @@ The Agent creates an OpenID4VP Authorization Request. The fragment below shows t
       }
     ]
   },
-  "response_uri": "https://agent.example/wallet/callback/7c9e"
+  "exp": 1746557100
 }
 ```
 
-#### Scope-Based Payload Variant
+#### Obtaining the Presentation
 
-The same route can express the credential query using `proof.scope` when the value is defined as an OpenID4VP scope query by an applicable profile, Wallet configuration, or verifier policy recognized by the Wallet and Verifier:
+The Agent invokes the Verifier-composed request directly through the Digital Credentials API, or relays it to a Wallet or remote service. The composed request is the `digital` member argument:
 
-```json
-{
-  "scheme": "x401",
-  "version": "0.1.0",
-  "proof": {
-    "presentation_protocol": "openid4vp",
-    "scope": "financial_customer",
-    "challenge": {
-      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-      "expires_at": "2026-05-06T18:45:00Z"
-    },
-    "oauth": {
-      "token_endpoint": "https://bank.example.com/oauth/token"
-    },
-    "issuers": {
-      "trust_establishment_url": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1"
-    },
-    "request_id": "proof-template-financial-customer-v1",
-    "satisfied_requirements": [
-      "urn:example:x401:satisfaction:financial-customer:v1"
-    ]
-  }
-}
-```
-
-The Agent-created OpenID4VP Authorization Request carries the same `scope` value and omits `dcql_query`:
-
-```json
-{
-  "response_type": "vp_token",
-  "client_id": "decentralized_identifier:did:web:agent.example",
-  "nonce": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-  "scope": "financial_customer",
-  "response_uri": "https://agent.example/wallet/callback/7c9e"
-}
+```js
+const result = await navigator.credentials.get({ digital: payload.presentation_requirements });
+// result => { protocol: "openid4vp-v1-signed", data: { /* presentation result bound to the Verifier */ } }
 ```
 
 #### Successful Retry With VP Artifact
@@ -1199,7 +1056,29 @@ Host: bank.example.com
 PROOF-PRESENTATION: <base64url-vp-artifact-json>
 ```
 
-The decoded VP Artifact contains the Wallet's `vp_token`, the Agent Identifier, and the x401 Verifier Challenge correlation values.
+The decoded VP Artifact carries the presentation result inline:
+
+```json
+{
+  "request_id": "proof-template-financial-customer-v1",
+  "response": {
+    "protocol": "openid4vp-v1-signed",
+    "data": "<wallet-returned-presentation-result>"
+  }
+}
+```
+
+#### Successful Retry With a Presentation Reference
+
+When the presentation result is too large for a header field, or was generated at a remote location, the VP Artifact carries a reference the Verifier dereferences:
+
+```json
+{
+  "request_id": "proof-template-financial-customer-v1",
+  "presentation_uri": "https://bank.example.com/.well-known/x401/presentations/abc123",
+  "expires_at": "2026-05-06T18:50:00Z"
+}
+```
 
 #### Failed Retry With x401 Error
 
@@ -1267,15 +1146,21 @@ PROOF-PRESENTATION: <base64url-x401-token-object>
 
 ## Composable Agent and Entity Identification
 
-x401 requires the Verifier to bind the Wallet presentation to the Agent Identifier used by the HTTP caller, but it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
+Because the Verifier is the relying party for the composed request, a returned presentation is already bound to the Verifier through the signed request. x401 does not, by default, require the presentation to be bound to the Agent, and it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
 
 These mechanisms compose cleanly with x401 when they:
 
 1. produce an authenticated caller identifier the Verifier can map to the route's accepted Agent Identifier policy;
 2. bind that identifier to the HTTP request being evaluated, including the method, target URI or authority, freshness values, and relevant x401 retry material;
 3. can be verified before or during x401 proof validation;
-4. do not alter the x401 Credential Query Requirement, Verifier Challenge, VP Artifact, or `402 Payment Required` boundary;
-5. allow the Verifier to reject mismatches between the authenticated caller, the OpenID4VP `client_id`, the VP Artifact `agent_id`, and any Verification Token holder identity.
+4. do not alter the composed request in `presentation_requirements`, the VP Artifact, or the `402 Payment Required` boundary;
+5. allow the Verifier to reject mismatches between the authenticated caller, any VP Artifact `agent_id`, and any Verification Token holder identity.
+
+### Agent Binding Options
+
+Agent binding is OPTIONAL in x401. Some deployments — such as a consumer AI client surfacing a verification link to a user — need no agent binding at all; the proof is bound to the Verifier and that is sufficient. Others — such as service-to-service or enterprise deployments — want to additionally bind the proof and retry to the specific calling Agent. This specification does not select a single mechanism. The subsections below describe options that compose with x401; a deployment that binds the Agent picks one (or more) and defines the accepted [[ref: Agent Identifier]] schemes in its policy.
+
+When an Agent relays the request to a separate wallet, browser, device, or remote service, or acquires a remotely generated [[ref: Presentation Result]], the surface that obtains the result is not necessarily the Agent that retries the route. A deployment that binds the Agent in those topologies MUST choose a binding mechanism that survives the relay — for example, an HTTP-layer or token-layer caller authentication on the retry — rather than relying on the presentation result alone.
 
 ### Web Bot Auth and HTTP Message Signatures
 
@@ -1283,13 +1168,13 @@ Web Bot Auth is a natural option for adding request-bound identification to x401
 
 When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `PROOF-PRESENTATION` header when retrying with direct proof or proof-token material, the `Authorization` header when retrying with application or upgraded token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
 
-A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the x401 Verifier Challenge, Wallet presentation binding, Credential Query Requirement satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the Credential Query Requirement, or prove end-user delegation.
+A Verifier MAY use the validated signing key, key directory authority, or derived service identity as the Agent Identifier, or as evidence that maps to an Agent Identifier. The Verifier MUST still validate the Wallet presentation binding to itself as relying party, the credential query satisfaction, issuer trust, token scope, and payment boundary. Web Bot Auth identifies the calling automation or service; it does not by itself prove the credential subject, satisfy the credential query, or prove end-user delegation.
 
 ### OAuth Proof-of-Possession and Client Authentication
 
-Deployments that use the OAuth token exchange leg MAY require additional OAuth client authentication at `proof.oauth.token_endpoint`. Mutual TLS client authentication and certificate-bound access tokens can bind the token request, and later token use, to a certificate controlled by the Agent. This works well when the Agent Identifier is a certificate-bound identifier, domain-bound client identifier, SPIFFE ID, or other identifier that the Verifier can map from the TLS client certificate.
+Deployments that use the OAuth token exchange leg MAY require additional OAuth client authentication at `oauth.token_endpoint`. Mutual TLS client authentication and certificate-bound access tokens can bind the token request, and later token use, to a certificate controlled by the Agent. This works well when the Agent Identifier is a certificate-bound identifier, domain-bound client identifier, SPIFFE ID, or other identifier that the Verifier can map from the TLS client certificate.
 
-DPoP can bind OAuth token requests and resource requests to an Agent-controlled key at the application layer. Because this version of x401 defines Bearer Verification Tokens, a DPoP-bound Verification Token retry needs either a deployment-specific profile or a future x401 token retry profile that permits `token_type: DPoP` and the `DPoP` proof header. Even when DPoP is used only at the token endpoint, the endpoint MUST ensure the DPoP key maps to the same Agent Identifier that the Wallet presentation targets.
+DPoP can bind OAuth token requests and resource requests to an Agent-controlled key at the application layer. Because this version of x401 defines Bearer Verification Tokens, a DPoP-bound Verification Token retry needs either a deployment-specific profile or a future x401 token retry profile that permits `token_type: DPoP` and the `DPoP` proof header. When a deployment binds the Agent and uses DPoP at the token endpoint, the endpoint MUST ensure the DPoP key maps to the Agent Identifier the deployment requires for the retry.
 
 ### Workload Identity
 
@@ -1297,15 +1182,15 @@ In service-to-service deployments, the Agent may be a workload rather than a use
 
 Workload identity proves the caller's operational identity. It does not prove that the caller holds the requested credential, that the credential subject is authorized, or that an end user delegated authority to the Agent. Those remain x401 proof validation and policy questions.
 
-### DID, Signed Request Objects, and Wallet-Facing Client Binding
+### Agent Identifier Schemes and HTTP-Layer Binding
 
-An Agent MAY use a DID, HTTPS origin, domain-bound client identifier, certificate-bound identifier, or other verifier-approved scheme as its OpenID4VP `client_id`. If the Agent signs its OpenID4VP request object, that signature helps the Wallet bind the presentation to the Agent's key and metadata.
+In the composed-request model the OpenID4VP `client_id` identifies the Verifier as relying party, not the Agent. A deployment that binds the Agent therefore does so at the HTTP or token layer rather than through the presentation request. The [[ref: Agent Identifier]] MAY be a DID, HTTPS origin, domain-bound client identifier, certificate-bound identifier, SPIFFE ID, or other verifier-approved scheme.
 
-This wallet-facing binding is necessary but not always sufficient. The Verifier also needs an HTTP-layer or token-layer way to determine that the protected-route caller is the same Agent Identifier the Wallet presentation targeted. Deployments can accomplish this by using the same key, a linked key, or a verifier-recognized mapping across the OpenID4VP client identifier, HTTP Message Signature identity, mutual TLS certificate, DPoP key, workload identity, or Verification Token holder identity.
+The Verifier determines that the protected-route caller is the required Agent Identifier using a verifier-recognized mapping across the HTTP Message Signature identity, mutual TLS certificate, DPoP key, workload identity, or Verification Token holder identity used on the retry. Because the presentation is bound to the Verifier, this caller binding is what ties the proof to a specific Agent when a deployment requires it.
 
 ### Delegation and Actor Evidence
 
-Some deployments need to know not only which Agent made the request, but who or what authorized that Agent to act. Delegation evidence can be carried as an additional credential, a VP disclosed through the x401 Credential Query Requirement, an OAuth Token Exchange actor chain, a GNAP grant artifact, a Verifiable Intent credential, or another signed mandate or capability.
+Some deployments need to know not only which Agent made the request, but who or what authorized that Agent to act. Delegation evidence can be carried as an additional credential, a credential disclosed through the request's `dcql_query`, an OAuth Token Exchange actor chain, a GNAP grant artifact, a Verifiable Intent credential, or another signed mandate or capability.
 
 Delegation evidence composes best when it is scoped, time-limited, replay-resistant, and bound to the Agent Identifier and requested resource or action. It does not replace caller authentication: the Verifier still needs to know which Agent is presenting the delegation evidence and whether that Agent is the one authorized by the evidence.
 
@@ -1340,27 +1225,19 @@ On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof r
 <data value="application/json;x401=proof-required" hidden>{
   "$schema": "https://x401.id/spec/schemas/request.json",
   "scheme": "x401",
-  "version": "0.1.0",
-  "proof": {
-    "presentation_protocol": "openid4vp",
-    "dcql_query": {
-      "credentials": [
-        {
-          "id": "financial_customer",
-          "format": "jwt_vc_json",
-          "meta": {
-            "type_values": ["FinancialCustomerCredential"]
-          }
+  "version": "0.2.0",
+  "presentation_requirements": {
+    "requests": [
+      {
+        "protocol": "openid4vp-v1-signed",
+        "data": {
+          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
         }
-      ]
-    },
-    "challenge": {
-      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-      "expires_at": "2026-05-06T18:45:00Z"
-    },
-    "oauth": {
-      "token_endpoint": "https://bank.example.com/oauth/token"
-    }
+      }
+    ]
+  },
+  "oauth": {
+    "token_endpoint": "https://bank.example.com/oauth/token"
   }
 }</data>
 ```
@@ -1377,32 +1254,54 @@ The embedded form does not extend `PROOF-REQUIRED` semantics. The header continu
 
 A client that processes embedded `<data>` elements:
 
-1. MUST treat the parsed JSON object as an x401 payload subject to the same structural validation, Verifier Challenge handling, and Credential Query Requirement processing defined elsewhere in this specification.
+1. MUST treat the parsed JSON object as an x401 payload subject to the same structural validation and composed-request processing defined elsewhere in this specification.
 2. SHOULD treat the embedded requirement as a disclosure of gating intent for the surrounding content and SHOULD complete the protocol by requesting the appropriate protected resource through normal x401 header-driven mechanisms.
 
 A Verifier that emits embedded `<data>` elements MUST still enforce proof on the protected resource through the normal `PROOF-REQUIRED` / `PROOF-PRESENTATION` exchange. Embedding a requirement in HTML is informational disclosure and does not by itself grant access.
 
 The JSON Schema for the embedded request object is included in [Appendix C: x401 Request Object JSON Schema](#appendix-c-x401-request-object-json-schema).
 
+### Remote and Out-of-Band Fulfillment
+
+::: note Informative
+This subsection describes, without adding new normative requirements, how the building blocks defined above let an Agent obtain a presentation when its own environment cannot invoke the Digital Credentials API — the common case for consumer AI clients. It uses only mechanisms already defined in this specification: the composed `presentation_requirements`, the [[ref: Presentation Reference]] form of the VP Artifact, and the existing retry. The community is invited to contribute concrete fulfillment and resume patterns.
+:::
+
+A consumer AI client may be unable to call `navigator.credentials.get()` itself. Because the composed request is signed and bound to the Verifier rather than to whoever invokes it, the request can be invoked somewhere else and the result returned to the Agent for replay. A common shape is:
+
+1. The Agent receives the x401 proof requirement and cannot invoke `presentation_requirements` directly.
+2. The Agent surfaces a fulfillment URL — for example, a verifier-hosted page — to the user. Hosting the page on a verifier-controlled origin lets the page's origin match the `expected_origins` of the signed request.
+3. The page invokes `navigator.credentials.get({ digital: request })` in its own browser context, on a real user activation, and obtains the presentation result.
+4. The page makes the result available for the route retry — for example, by posting it to the Verifier, which holds it at a `presentation_uri`, or by returning a short-lived reference.
+5. The Agent resumes: it acquires the result or its reference and retries the protected route with a VP Artifact carrying the inline result or a [[ref: Presentation Reference]].
+
+How the Agent learns that fulfillment is complete and acquires the result or reference — polling a status endpoint, a user-pasted completion code, or a continuation URL — is a deployment choice. None of these resume mechanisms change the wire format defined by this specification; they all converge on the same protected-route retry. Because the presentation is bound to the Verifier, the surface that invokes the request does not need to be the Agent, and the Agent does not need to read the presentation it relays.
+
 ## Security Considerations
 
 ### Replay Prevention
 
-Verifier Challenges used within x401 SHOULD include fresh nonce values and short expiries. Verifiers SHOULD reject stale or replayed proofs.
+The freshness and replay properties of a presentation derive from the OpenID4VP `nonce` the Verifier places in the signed request. Verifiers SHOULD use fresh nonce values and short request expiries and SHOULD reject stale or replayed proofs. How a Verifier recognizes a returned nonce as one it issued, and whether it enforces strict one-time use with shared replay state, are deployment decisions; see [Verifier State and Stateless Operation](#verifier-state-and-stateless-operation).
 
-Stateless deployments SHOULD use short expiration windows and verifier-protected nonce state. Strict one-time-use Verifier Challenge enforcement requires replay tracking or shared replay-prevention state. Verifiers MUST NOT treat a well-formed challenge value as proof that the Verifier Challenge was issued by that Verifier unless the value is present in stored Verifier Challenge state or authenticates through verifier-protected nonce state.
+### Verifier Binding
+
+The returned presentation is bound to the Verifier as relying party through the signed request: the request signature, `client_id`, and `expected_origins` establish that the presentation was produced for this Verifier. This binding holds regardless of which origin or surface invoked the request, which is what makes relay and remote fulfillment safe. A Verifier MUST validate that binding and MUST reject a presentation that is not bound to it as relying party.
+
+Signing the request is what avoids origin confusion when the request is relayed or invoked by a surface other than the Verifier. An unsigned DC API request would bind only to the invoking origin; x401 therefore requires `openid4vp-v1-signed`.
 
 ### Agent Binding
 
-Returned presentations MUST be bound to the Agent Identifier used by the Agent for the protected-route retry. The Verifier MUST reject a VP Artifact if the Wallet presentation is not cryptographically bound to the Agent Identifier it is communicating with.
+Agent binding is OPTIONAL. The presentation is bound to the Verifier, not to the Agent, so a deployment that does not bind the Agent still has a presentation it can trust. A deployment that additionally wants to tie the proof and retry to a specific Agent layers an HTTP-layer or token-layer caller authentication over x401; see [Agent Binding Options](#agent-binding-options). When a deployment binds the Agent, it MUST reject a retry whose caller cannot be bound to the required [[ref: Agent Identifier]]. Because the surface that invokes the request may differ from the Agent that retries the route, a binding mechanism that depends only on the presentation result is insufficient in relay and remote-fulfillment topologies.
 
-The Verifier Challenge binds the presentation to the Verifier by embedding the Verifier identifier and expected nonce in the challenge value. The Agent client binding and Verifier Challenge binding are both required.
+### Presentation by Reference
+
+A `presentation_uri` is a capability-style reference: possession of the URL is enough to retrieve the presentation. The Verifier MUST issue a unique URI per presentation, and SHOULD make it `https`, unguessable, short-lived, single-use, and scoped to the route and retry it serves; the URL SHOULD be treated as sensitive because it can leak through logs, history, and intermediaries. Because the Verifier issues these references, it SHOULD dereference only URIs it recognizes as its own, which also guards against being pointed at arbitrary locations; it SHOULD bound the response size and time of the fetch. A reference that is reused, expired, or unrecognized MUST be rejected. Integrity and authenticity of the fetched bytes do not depend on a separate digest: the presentation is validated against the issued request's `nonce`, `client_id`, and `expected_origins`, so a substituted or tampered result fails normal proof validation.
 
 ### Issuer Trust
 
 Acquisition hints MUST NOT be treated as sufficient trust material. Verifiers MUST apply their own trusted issuer policy and validation logic.
 
-When a x401 payload includes `proof.issuers.trust_establishment_url`, that URL identifies the DIF Credential Trust Establishment document for the proof requirement. The document can help Agents and Wallets choose likely acceptable credentials, but it does not replace verifier-side enforcement. The Verifier MUST independently validate that presented credentials were issued by parties approved under the applicable Issuer Trust List or by the Verifier's internal issuer policy when no list is disclosed.
+When a x401 payload includes `trust_establishment`, that URL identifies the DIF Credential Trust Establishment document for the proof requirement. The document is an acquisition and discovery hint; it does not decide validity. Issuer constraints that must hold at presentation time belong in the signed request's DCQL `trusted_authorities`, and the Verifier MUST independently validate that presented credentials were issued by parties approved under that request and its own issuer policy. The Verifier MUST NOT rely on the Agent's interpretation of the Issuer Trust List.
 
 ### Proof Presentation and Token Retry
 
@@ -1410,11 +1309,11 @@ Verifiers SHOULD prefer Verification Token retry in multi-step flows to avoid re
 
 Responses carrying fresh `PROOF-REQUIRED` challenge material or `PROOF-RESPONSE` diagnostics SHOULD use `Cache-Control: no-store` unless the deployment has explicitly made the x401 payload safe to cache. Responses whose selected representation varies based on a `PROOF-PRESENTATION` request header SHOULD use `Vary: PROOF-PRESENTATION` or stronger cache controls.
 
-The x401 payload is visible to the Agent and to intermediaries that can observe decrypted HTTP traffic. Sensitive Verifier Challenge state SHOULD be omitted, stored server-side, or placed only in verifier-protected nonce state.
+The x401 payload is visible to the Agent and to intermediaries that can observe decrypted HTTP traffic. A Verifier that encodes state in the request `nonce` to operate statelessly SHOULD protect that state with a signature, MAC, or authenticated encryption so it cannot be forged or read.
 
 ### Verification Token Scope
 
-Verification Tokens SHOULD be short-lived, revocable, and scoped to the accepted x401 proof requirement. A Verifier that issues a token MUST identify the Agent as the token holder and MUST NOT treat the credential subject as the token holder unless the credential subject is also the Agent.
+Verification Tokens SHOULD be short-lived, revocable, and scoped to the accepted x401 proof requirement. When a deployment binds the Agent, a Verifier that issues a token MUST identify the Agent as the token holder and MUST NOT treat the credential subject as the token holder unless the credential subject is also the Agent.
 
 ### Payment Separation
 
@@ -1445,16 +1344,14 @@ A conforming x401 Verifier:
 - includes `PROOF-REQUIRED: <base64url-x401-payload>` when proof is required or advertised
 - treats the HTTP status code as the overall response status, not as the x401 protocol carrier
 - returns a valid base64url-encoded x401 payload in `PROOF-REQUIRED`
-- sets `proof.presentation_protocol` to `openid4vp`
-- includes a Credential Query Requirement as either `proof.dcql_query` or `proof.scope` rather than a fully composed OpenID4VP Authorization Request
-- includes a Verifier Challenge composed from its verifier identifier and a fresh cryptographic nonce
+- includes a composed Digital Credentials request at `presentation_requirements` whose every entry is a valid `openid4vp-v1-signed` OpenID4VP request for the DC API
+- signs each request and sets the `client_id` and `expected_origins` that make the Verifier the relying party
 - includes an OAuth token endpoint for VP Artifact token exchange
-- validates VP Artifacts for Agent client binding, Verifier Challenge correctness, Credential Query Requirement satisfaction, issuer trust, status, revocation, and route policy
-- accepts VP Artifacts in `PROOF-PRESENTATION: <base64url-vp-artifact-json>`
+- validates presentations for binding to itself as relying party, credential query satisfaction, nonce freshness, issuer trust, status, revocation, and route policy
+- accepts VP Artifacts in `PROOF-PRESENTATION: <base64url-vp-artifact-json>` in both inline and by-reference forms, dereferencing a Presentation Reference when supplied
 - accepts Verification Tokens as x401 Token Objects in `PROOF-PRESENTATION: <base64url-x401-token-object>` when x401 proof satisfaction is separate from existing application authorization
 - binds x401 Verification Tokens to the same caller context as any existing application authorization credential present on the request
 - returns `PROOF-RESPONSE: <base64url-x401-error-object>` when reporting x401 proof presentation or token errors
-- issues Verification Tokens to the Agent when token exchange is used
 - optionally includes a DIF Credential Trust Establishment URL for issuer trust and acquisition guidance
 - keeps payment separate under `402 Payment Required`
 
@@ -1462,12 +1359,9 @@ A conforming x401 Agent:
 
 - recognizes `PROOF-REQUIRED`
 - decodes and processes the x401 payload from the `PROOF-REQUIRED` field value
-- requires `proof.presentation_protocol` to be `openid4vp`
-- creates its own wallet-facing OpenID4VP Presentation Request
-- uses the x401 Verifier Challenge as the Presentation Request `nonce`
-- includes the x401 Credential Query Requirement as the Presentation Request `dcql_query` or `scope`, matching the query member present in the x401 payload
-- identifies itself as the OpenID4VP client for the Wallet presentation
-- packages the Wallet result as a VP Artifact
+- treats `presentation_requirements` as the Verifier-composed Digital Credentials request and does not modify it
+- obtains a presentation result for `presentation_requirements` by invoking it through a native credential method, relaying it to a Wallet or remote service, or acquiring a remotely generated result
+- packages the presentation result as a VP Artifact, inline or as a Presentation Reference
 - retries the same protected route that produced the x401 proof requirement with `PROOF-PRESENTATION` carrying a VP Artifact, `PROOF-PRESENTATION` carrying an x401 Token Object, or a deployment-defined upgraded `Authorization` token
 - preserves existing application `Authorization` credentials when carrying a separate x401 Verification Token as an x401 Token Object in `PROOF-PRESENTATION`
 - recognizes x401 Error Objects in `PROOF-RESPONSE` as x401 proof failures regardless of the HTTP status code
@@ -1482,7 +1376,7 @@ The items below are questions intentionally left open at the time of the initial
 
 How should x401 compose with machine-payment protocols that use `402 Payment Required`? Future work should define recommended sequencing for proof-first, payment-first, and parallel proof/payment flows while preserving the current boundary that x401 handles proof and `402` handles payment.
 
-Open design questions include how a payment artifact should be bound to the x401 route, method, Verifier Challenge, Agent Identifier, and payment quote; whether a `402` response should reference the same Verifier Challenge context as the earlier x401 response; how proof freshness and payment settlement freshness interact; and how protocols such as x402, AP2, ACP, or UCP should carry or reference x401 proof satisfaction without redefining it.
+Open design questions include how a payment artifact should be bound to the x401 route, method, request nonce, any Agent Identifier, and payment quote; whether a `402` response should reference the same proof context as the earlier x401 response; how proof freshness and payment settlement freshness interact; and how protocols such as x402, AP2, ACP, or UCP should carry or reference x401 proof satisfaction without redefining it.
 
 ### Fully Autonomous Delegation
 
@@ -1492,9 +1386,9 @@ Future work should specify how such a delegation is created, presented, constrai
 
 ### Adding Agent Authentication
 
-Is adding agent authentication on top of x401 required? The base protocol requires the Verifier to bind the returned presentation to an Agent Identifier, but it does not require a globally authenticated public agent identity for every deployment. Some deployments may accept pairwise, ephemeral, enterprise-local, or token-bound Agent Identifiers; others may require Web Bot Auth, HTTP Message Signatures, mutual TLS, DPoP, SPIFFE, WIMSE, DID-based authentication, or another caller-authentication profile.
+When is agent binding necessary on top of x401? The base protocol binds the returned presentation to the Verifier as relying party and makes Agent binding OPTIONAL; see [Agent Binding Options](#agent-binding-options). Some deployments need no Agent binding at all; others may bind pairwise, ephemeral, enterprise-local, or token-bound Agent Identifiers, or require Web Bot Auth, HTTP Message Signatures, mutual TLS, DPoP, SPIFFE, WIMSE, DID-based authentication, or another caller-authentication profile.
 
-Future work should define when stronger agent authentication is mandatory, how a Verifier advertises acceptable caller-authentication mechanisms in or near the x401 proof requirement, which status codes and headers are used when caller authentication is missing, and how mismatches are reported across HTTP caller identity, OpenID4VP client identity, VP Artifact `agent_id`, Verification Token holder identity, and delegation evidence.
+Future work should define when Agent binding is mandatory, how a Verifier advertises acceptable caller-authentication mechanisms in or near the x401 proof requirement, which status codes and headers are used when caller authentication is missing, and how mismatches are reported across HTTP caller identity, VP Artifact `agent_id`, Verification Token holder identity, and delegation evidence.
 
 ## References
 
@@ -1510,8 +1404,9 @@ Future work should define when stronger agent authentication is mandatory, how a
 - [RFC 8414: OAuth 2.0 Authorization Server Metadata](https://datatracker.ietf.org/doc/html/rfc8414)
 - [RFC 8693: OAuth 2.0 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693)
 - [RFC 9101: OAuth 2.0 JWT-Secured Authorization Request (JAR)](https://datatracker.ietf.org/doc/html/rfc9101)
-- [OpenID for Verifiable Presentations 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html)
+- [OpenID for Verifiable Presentations 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html), including its profile for use over the W3C Digital Credentials API
 - [OpenID for Verifiable Credential Issuance 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html)
+- [W3C Digital Credentials API](https://www.w3.org/TR/digital-credentials/)
 - [DIF Credential Trust Establishment 1.0](https://identity.foundation/credential-trust-establishment/)
 
 ### Informative
@@ -1521,7 +1416,6 @@ Future work should define when stronger agent authentication is mandatory, how a
 - [RFC 9449: OAuth 2.0 Demonstrating Proof of Possession](https://datatracker.ietf.org/doc/html/rfc9449)
 - [RFC 9635: Grant Negotiation and Authorization Protocol](https://datatracker.ietf.org/doc/html/rfc9635)
 - [W3C Verifiable Credentials Data Model](https://www.w3.org/TR/vc-data-model/)
-- [W3C Digital Credentials API](https://www.w3.org/TR/digital-credentials/)
 - [Web Bot Auth Architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture)
 - [HTTP Message Signatures Directory](https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory)
 - [WIMSE Workload-to-Workload Authentication with HTTP Signatures](https://datatracker.ietf.org/doc/html/draft-ietf-wimse-http-signature)
@@ -1535,49 +1429,24 @@ Future work should define when stronger agent authentication is mandatory, how a
 ```json
 {
   "scheme": "x401",
-  "version": "0.1.0",
-  "proof": {
-    "presentation_protocol": "openid4vp",
-    "dcql_query": {
-      "credentials": [
-        {
-          "id": "proof",
-          "format": "jwt_vc_json"
+  "version": "0.2.0",
+  "presentation_requirements": {
+    "requests": [
+      {
+        "protocol": "openid4vp-v1-signed",
+        "data": {
+          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
         }
-      ]
-    },
-    "challenge": {
-      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-      "expires_at": "2026-05-06T18:45:00Z"
-    },
-    "oauth": {
-      "token_endpoint": "https://bank.example.com/oauth/token"
-    }
+      }
+    ]
+  },
+  "oauth": {
+    "token_endpoint": "https://bank.example.com/oauth/token"
   }
 }
 ```
 
-The minimal proof object can use `scope` instead of `dcql_query` when the value is a defined OpenID4VP scope query:
-
-```json
-{
-  "scheme": "x401",
-  "version": "0.1.0",
-  "proof": {
-    "presentation_protocol": "openid4vp",
-    "scope": "proof",
-    "challenge": {
-      "value": "x401:aHR0cHM6Ly9iYW5rLmV4YW1wbGUuY29t:uX7Vq3mZJH6MeN0qz2L7SQ",
-      "expires_at": "2026-05-06T18:45:00Z"
-    },
-    "oauth": {
-      "token_endpoint": "https://bank.example.com/oauth/token"
-    }
-  }
-}
-```
-
-The selected JSON object is carried in the `PROOF-REQUIRED` header as:
+The signed OpenID4VP request inside `presentation_requirements` carries the credential query (`dcql_query`), the `nonce`, the `client_id`, and `expected_origins`. The JSON object is carried in the `PROOF-REQUIRED` header as:
 
 ```http
 PROOF-REQUIRED: <base64url-minimal-x401-payload>
@@ -1589,9 +1458,12 @@ PROOF-REQUIRED: <base64url-minimal-x401-payload>
 x401 is best understood as:
 
 - an HTTP route proof requirement protocol
-- carrying verifier proof requirements rather than a completed OpenID4VP Authorization Request
-- requiring the Agent to create the wallet-facing OpenID4VP presentation request
-- binding Wallet presentations to the Agent as the OpenID4VP client and to the Verifier through the Verifier Challenge value
+- carrying a composed, Verifier-authored Digital Credentials request at `presentation_requirements` rather than a decomposed set of values for the Agent to assemble
+- making the Verifier the relying party for that request, bound through the request signature, `client_id`, and `expected_origins`
+- letting the Agent execute the request natively, relay it to a wallet or remote service, or acquire a remotely generated result and replay the route
+- reserving the top level of the payload, alongside the native request, for x401-specific values not yet expressible inside a native Digital Credentials request
+- carrying the presentation result inline or by reference on retry
+- treating VP response encryption and Agent binding as OPTIONAL
 - allowing caller authentication, request signing, workload identity, and delegation evidence to layer over the protected-route request
 - optionally exchanging verified VP Artifacts for OAuth access tokens
 - optionally pointing to OpenID4VCI issuance sources
@@ -1609,7 +1481,7 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
   "title": "x401 Proof Requirement Payload",
   "description": "Schema for an x401 proof requirement payload as defined by the x401 specification.",
   "type": "object",
-  "required": ["scheme", "version", "proof"],
+  "required": ["scheme", "version", "presentation_requirements", "oauth"],
   "properties": {
     "$schema": {
       "type": "string",
@@ -1625,94 +1497,74 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
       "type": "string",
       "description": "The x401 payload version."
     },
-    "proof": {
+    "presentation_requirements": {
       "type": "object",
-      "required": ["presentation_protocol", "challenge", "oauth"],
+      "required": ["requests"],
+      "description": "The composed Digital Credentials request (a DigitalCredentialRequestOptions value), usable as the digital member of navigator.credentials.get().",
       "properties": {
-        "presentation_protocol": {
-          "type": "string",
-          "const": "openid4vp",
-          "description": "Identifies the wallet-facing presentation protocol. For this version of x401 the value MUST be \"openid4vp\"."
-        },
-        "dcql_query": {
-          "type": "object",
-          "description": "The explicit DCQL Requirement for the protected route. Exactly one of dcql_query or scope MUST be present."
-        },
-        "scope": {
-          "type": "string",
-          "description": "The Scope Requirement for the protected route, expressed as an OpenID4VP scope string. Exactly one of dcql_query or scope MUST be present."
-        },
-        "challenge": {
-          "type": "object",
-          "required": ["value", "expires_at"],
-          "properties": {
-            "value": {
-              "type": "string",
-              "pattern": "^x401:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$",
-              "description": "Verifier Challenge value: the literal prefix \"x401\", the base64url-encoded verifier identifier, and an opaque verifier-generated nonce, separated by colons."
-            },
-            "expires_at": {
-              "type": "string",
-              "format": "date-time",
-              "description": "RFC 3339 timestamp after which the Verifier will reject the Verifier Challenge."
-            }
-          },
-          "additionalProperties": false
-        },
-        "oauth": {
-          "type": "object",
-          "required": ["token_endpoint"],
-          "properties": {
-            "token_endpoint": {
-              "type": "string",
-              "format": "uri",
-              "description": "OAuth 2.0 token endpoint where the Agent can exchange a VP Artifact for a Verification Token."
-            },
-            "audience": {
-              "type": "string",
-              "description": "Optional OAuth token exchange audience value the Agent should request."
-            },
-            "resource": {
-              "type": "string",
-              "format": "uri",
-              "description": "Optional OAuth token exchange resource value the Agent should request."
-            }
-          },
-          "additionalProperties": false
-        },
-        "issuers": {
-          "type": "object",
-          "required": ["trust_establishment_url"],
-          "properties": {
-            "trust_establishment_url": {
-              "type": "string",
-              "format": "uri",
-              "description": "HTTPS URL for a DIF Credential Trust Establishment document that describes verifier-approved issuers, authorities, roles, activities, credential schemas, or credential types for this proof requirement."
-            }
-          },
-          "additionalProperties": false
-        },
-        "request_id": {
-          "type": "string",
-          "description": "Stable verifier-defined identifier for the proof template."
-        },
-        "satisfied_requirements": {
+        "requests": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Stable verifier-defined identifiers for the reusable proof requirements that will be marked satisfied if this proof is fulfilled."
+          "minItems": 1,
+          "description": "Digital Credentials request entries. Every entry MUST be a signed OpenID4VP request for the DC API.",
+          "items": {
+            "type": "object",
+            "required": ["protocol", "data"],
+            "properties": {
+              "protocol": {
+                "type": "string",
+                "const": "openid4vp-v1-signed",
+                "description": "The DC API protocol identifier. For this version of x401 the value MUST be \"openid4vp-v1-signed\"."
+              },
+              "data": {
+                "type": "object",
+                "required": ["request"],
+                "description": "Protocol-specific request data. For openid4vp-v1-signed, an object carrying the signed OpenID4VP request.",
+                "properties": {
+                  "request": {
+                    "type": "string",
+                    "description": "The signed OpenID4VP request (a JWT-Secured Authorization Request)."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "oauth": {
+      "type": "object",
+      "required": ["token_endpoint"],
+      "properties": {
+        "token_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth 2.0 token endpoint where the Agent can exchange a VP Artifact for a Verification Token."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Optional OAuth token exchange audience value the Agent should request."
+        },
+        "resource": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional OAuth token exchange resource value the Agent should request."
         }
       },
-      "oneOf": [
-        {
-          "required": ["dcql_query"],
-          "not": { "required": ["scope"] }
-        },
-        {
-          "required": ["scope"],
-          "not": { "required": ["dcql_query"] }
-        }
-      ],
       "additionalProperties": false
+    },
+    "trust_establishment": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional acquisition and discovery hint: HTTPS URL for a DIF Credential Trust Establishment document. Issuer enforcement is governed by the signed request (DCQL trusted_authorities), not by this member."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Optional Agent-visible hint: a stable verifier-defined identifier for the proof template."
+    },
+    "satisfied_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional Agent-visible reuse hint: stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy."
     },
     "payment": {
       "type": "object",
