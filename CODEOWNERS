@@ -1,0 +1,8 @@
+# Code owners for proof/x401.
+#
+# Branch protection on `main` requires a review from a code owner on every PR.
+# The owners below are automatically requested for review when a PR is opened.
+# Adjust to the appropriate team or individuals as ownership settles.
+
+# Default owner for everything in the repository.
+* @proof/proof-product
