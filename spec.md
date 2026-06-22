@@ -7,6 +7,7 @@ Version: 0.2.0
 
 Editors:
 ~ [Daniel Buchner](https://www.linkedin.com/in/dbuchner) - [Proof](https://proof.com)
+~ [Bhushit Agarwal](https://www.linkedin.com/in/bhushitagarwal/) - [Circle](https://circle.com)
 
 Contributors & Reviewers:
 ~ [Darren Louie](https://www.linkedin.com/in/darrenlouie) - [Proof](https://proof.com)
