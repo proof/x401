@@ -1,0 +1,18 @@
+{
+  "public_root": "./www",
+  "resource_path": "./www",
+  "specs": [
+    {
+      "title": "x401: HTTP Proof Requirement Protocol",
+      "logo": "x401-icon.svg",
+      "logo_link": "https://x401.id",
+      "output_path": "./www/spec",
+      "spec_directory": "./",
+      "source": {
+        "host": "github",
+        "account": "proof",
+        "repo": "x401"
+      }
+    }
+  ]
+}
