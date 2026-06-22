@@ -7,7 +7,14 @@ Version: 0.2.0
 
 Editors:
 ~ [Daniel Buchner](https://www.linkedin.com/in/dbuchner) - [Proof](https://proof.com)
+
+
+Contributors & Reviewers:
 ~ [Darren Louie](https://www.linkedin.com/in/darrenlouie) - [Proof](https://proof.com)
+~ [Lee Campbell](https://github.com/leecam) - [Google](https://google.com)
+~ [Tim Cappalli](https://www.linkedin.com/in/timcappalli/) - [Okta](https://okta.com)
+~ [Nick Steele](https://www.linkedin.com/in/nickelsteele/) - [OpenAI](https://openai.com)
+~ [Reema Bajwa](https://www.linkedin.com/in/reema-bajwa/) - [Google](https://google.com)
 
 Participate:
 ~ [GitHub repo](https://github.com/proof/x401)
