@@ -3,13 +3,12 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Specification and tests for the x401 proof-gated HTTP resource protocol",
+  "description": "Specification for the x401 proof-gated HTTP resource protocol",
   "scripts": {
     "site:build": "node scripts/build-pages.mjs",
     "spec:dev": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp({ dev: true });\"",
     "spec:edit": "node --input-type=module -e \"import specUp from 'spec-up'; await specUp();\"",
-    "spec:render": "node scripts/render-spec.mjs",
-    "test": "vitest run"
+    "spec:render": "node scripts/render-spec.mjs"
   },
   "dependencies": {
     "spec-up": "0.11.6"
