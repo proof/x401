@@ -1,42 +1,70 @@
 # x401
 
-The **x401 HTTP Proof Requirement Protocol** specification.
+**x401** is an HTTP-based, route-scoped **proof requirement protocol**: it lets a server require credential-based proof — proving personhood, residency, accreditation, membership, entitlement, organizational standing, or other attributes — before granting access to a protected resource, in a way that automated agents and AI clients can satisfy.
 
-x401 defines an HTTP-native, route-scoped protocol for requiring credential-based proof
-before access to a protected resource is granted. A server (the _verifier_) advertises a
-proof requirement with a `PROOF-REQUIRED` header; a user _agent_ retries with a
-`PROOF-PRESENTATION` header carrying a verifiable presentation — or a reusable
-proof-satisfaction token. x401 builds on DCQL, OpenID4VP, OAuth 2.0, and OpenID4VCI, and
-composes with — but does not redefine — payment protocols (`402 Payment Required`).
+It fills a gap in HTTP. `401 Unauthorized` / `WWW-Authenticate` handle authentication, and `402 Payment Required` handles payment, but there is no general, machine-readable way to express *"present a qualifying credential to proceed."* x401 defines that, while staying deliberately separate from payment (`402` and a payment protocol still handle that).
 
-📄 **Read the specification:** <https://x401.proof.com/spec>
+## How it works
 
-## Repository layout
+x401 is a header protocol carried over three dedicated fields:
 
-| Path | Purpose |
-| --- | --- |
-| `spec.md`, `specs.json` | Specification source ([spec-up](https://github.com/decentralized-identity/spec-up) inputs) |
-| `scripts/` | Build entry points that render the spec and static site |
-| `public/` | Static assets for the rendered site |
-| `CHANGELOG.md` | Notable changes to the specification |
+- **`PROOF-REQUIRED`** — the Verifier advertises the proof requirement as a base64url-encoded JSON payload.
+- **`PROOF-PRESENTATION`** — the Agent returns the presentation result (inline or by reference) on retry.
+- **`PROOF-RESPONSE`** — the Verifier reports x401-specific results, including errors.
 
-## Building locally
+The payload's core is a **composed, Verifier-signed [Digital Credentials API](https://www.w3.org/TR/digital-credentials/) request** (an [OpenID4VP](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html) request over the DC API) carried in its `presentation_requirements` member — usable directly as `navigator.credentials.get({ digital: payload.presentation_requirements })`. The Verifier is the relying party for that request, so the request can be:
+
+1. **invoked natively** by the Agent through the Digital Credentials API,
+2. **relayed** to a web wallet or a remote presentation service, or
+3. **fulfilled out-of-band** (e.g. a verifier-hosted page) and the result acquired by the Agent.
+
+The Agent then retries the original route with the presentation result. A typical flow:
 
 ```
-npm ci
-npm run spec:dev      # live-reloading spec preview
-npm run site:build    # build the static site into www/
-npm test
+Agent ──▶ GET /protected                      (no proof)
+Verifier ─▶ 401 + PROOF-REQUIRED: <payload>    (composed signed DC request)
+Agent ──▶ obtain a presentation for the request (native / relay / remote)
+Agent ──▶ GET /protected + PROOF-PRESENTATION: <result or reference>
+Verifier ─▶ 200 OK                             (proof validated)
 ```
 
-## Implementations
+VP response encryption and binding the proof to a specific Agent are both **optional**; the proof is bound to the Verifier by the signed request itself. An optional OAuth 2.0 token-exchange leg lets an Agent trade a verified presentation for a short-lived, reusable token.
 
-- [`@proof.com/x401-node`](https://github.com/proof/x401-node) — Node.js SDK for verifiers and agents.
+The normative specification lives in **[`spec.md`](spec.md)** and is published at **<https://x401.id>**.
+
+## Building the spec locally
+
+The spec is authored in [`spec.md`](spec.md) and rendered to HTML with [spec-up](https://github.com/decentralized-identity/spec-up).
+
+**Prerequisites:** Node.js 18+ (developed on Node 24).
+
+```sh
+npm install          # install dependencies
+npm run spec:render  # render spec.md → www/spec/
+```
+
+Then open `www/spec/index.html` in a browser. For the most reliable rendering of assets, serve the output with any static file server, e.g.:
+
+```sh
+npx serve www/spec
+```
+
+While editing, use the watch mode to regenerate on every save:
+
+```sh
+npm run spec:dev
+```
+
+To produce the full deployable site (adds the root redirect, `_headers`, and `_redirects`):
+
+```sh
+npm run site:build
+```
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome. The spec is a working draft, and the **Open Questions & Future Additions** section of [`spec.md`](spec.md) lists areas where proposals, examples, interop profiles, and reference implementations are especially wanted.
 
 ## License
 
-[Apache 2.0](LICENSE).
+Licensed under the [Apache License 2.0](LICENSE).
