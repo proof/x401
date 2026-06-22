@@ -61,12 +61,6 @@ To produce the full deployable site (adds the root redirect, `_headers`, and `_r
 npm run site:build
 ```
 
-## Tests
-
-```sh
-npm test
-```
-
 ## Contributing
 
 Issues and pull requests are welcome. The spec is a working draft, and the **Open Questions & Future Additions** section of [`spec.md`](spec.md) lists areas where proposals, examples, interop profiles, and reference implementations are especially wanted.
