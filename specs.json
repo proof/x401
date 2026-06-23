@@ -6,8 +6,22 @@
       "title": "x401: HTTP Proof Requirement Protocol",
       "logo": "x401-icon.svg",
       "logo_link": "https://x401.id",
-      "output_path": "./www/spec",
+      "output_path": "./www/spec/latest",
       "spec_directory": "./",
+      "markdown_paths": ["spec.md"],
+      "source": {
+        "host": "github",
+        "account": "proof",
+        "repo": "x401"
+      }
+    },
+    {
+      "title": "x401: HTTP Proof Requirement Protocol",
+      "logo": "x401-icon.svg",
+      "logo_link": "https://x401.id",
+      "output_path": "./www/spec/0.1.0",
+      "spec_directory": "./versions/0.1.0",
+      "markdown_paths": ["spec.md"],
       "source": {
         "host": "github",
         "account": "proof",
