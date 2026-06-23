@@ -18,11 +18,14 @@ await writeFile(
   path.join(outputDir, "index.html"),
   `<!doctype html>
 <meta charset="utf-8" />
-<meta http-equiv="refresh" content="0; url=./spec/" />
+<meta http-equiv="refresh" content="0; url=./spec/latest/" />
 <title>x401 Specification</title>
-<p>Redirecting to <a href="./spec/">the x401 specification</a>.</p>
+<p>Redirecting to <a href="./spec/latest/">the x401 specification</a>.</p>
 `,
 );
-await writeFile(path.join(outputDir, "_redirects"), "/  /spec/  302\n");
+await writeFile(
+  path.join(outputDir, "_redirects"),
+  "/         /spec/latest/  302\n/spec     /spec/latest/  302\n/spec/    /spec/latest/  302\n",
+);
 await cp(headersFile, path.join(outputDir, "_headers"));
 await writeFile(path.join(outputDir, ".nojekyll"), "");
