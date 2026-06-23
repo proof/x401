@@ -405,6 +405,7 @@ Name | Definition
 `trust_establishment` | OPTIONAL. HTTPS URL of a DIF Credential Trust Establishment document, as an acquisition and discovery hint. See [Trust Establishment](#trust-establishment).
 `request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template, as an Agent-visible hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
 `satisfied_requirements` | OPTIONAL. Stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy, as an Agent-visible reuse hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
+`return_uri` | OPTIONAL. An `https` URL added by a relaying intermediary (never by the Verifier) telling a remote handler where to deliver the presentation result. See [Relayed Delivery to a Remote Handler](#relayed-delivery-to-a-remote-handler).
 `payment` | OPTIONAL. Describes that payment is additionally required, without replacing `402` semantics.
 
 The credential requirement, the OpenID4VP `nonce`, and the request expiry all live inside the request in `presentation_requirements`; x401 does not duplicate them at the payload level. Of the payload-level members, only `presentation_requirements` and `oauth` are load-bearing; `trust_establishment`, `request_id`, and `satisfied_requirements` are optional hints and optimizations.
@@ -595,18 +596,18 @@ An Agent obtains a presentation by one of the following, all of which carry the 
 
    A native platform credential handler MAY be used in place of the Web API where an equivalent mechanism exists.
 
-2. **Relay to a Wallet or remote service.** The Agent forwards `presentation_requirements`, or a single selected entry from `presentation_requirements.requests`, to a web wallet or remote presentation service that can execute the request and return a presentation result.
+2. **Relay to a remote handler.** The Agent forwards the request to a remote handler — a web wallet or service that produces the presentation without invoking the Digital Credentials API itself — and the handler returns the result to a URL the Agent supplies. See [Relayed Delivery to a Remote Handler](#relayed-delivery-to-a-remote-handler).
 
 3. **Remote, out-of-band generation.** When the Agent's environment cannot invoke the request directly — for example, a consumer AI client without a credential handler — the request can be handed to a remote fulfillment surface (such as a verifier-hosted page) that invokes the Digital Credentials API in its own context and generates the presentation. The Agent then acquires the result and replays the protected route. See [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment).
 
-In every case the resulting presentation is bound per the request's mode — to the Verifier as relying party for a signed request, or to the invoking origin and the Verifier's `nonce` for an unsigned request (see [Verifier Binding](#verifier-binding)) — not to the Agent.
+In every case the resulting presentation is bound per the request's mode and transport — to the Verifier as relying party for a signed request, or to the invoking origin and the Verifier's `nonce` for an unsigned request (see [Verifier Binding](#verifier-binding)) — not to the Agent.
 
 ### Composed Request Invariants
 
 The composed request is authored and signed by the Verifier. The Agent treats it as opaque:
 
 1. The Agent MUST NOT modify any entry in `presentation_requirements`. The request signature binds its contents, so any modification invalidates it.
-2. When `presentation_requirements.requests` contains more than one entry, the Agent MAY select an entry by `protocol` or by the credential formats the chosen Wallet or handler supports, and MAY pass the entries through unchanged for the handler to select.
+2. When `presentation_requirements.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Wallet or handler implements, and MAY pass the entries through unchanged; which entry is ultimately used is determined by the Wallet or handler matching the request against available credentials, not chosen up front by the Agent.
 3. The Agent MUST arrange to acquire the [[ref: Presentation Result]] returned for the request, whether it invokes the request itself, relays it, or acquires a remotely generated result.
 
 A Verifier composing `presentation_requirements`:
@@ -619,6 +620,37 @@ A Verifier composing `presentation_requirements`:
 x401 does not restate the field-level rules for composing, signing, or invoking a Digital Credentials request; those are defined by the W3C Digital Credentials API and by OpenID4VP for the DC API. x401 requires only that `presentation_requirements` is a valid OpenID4VP request for the DC API; the Verifier validates whichever binding its chosen request mode provides.
 
 `trust_establishment` can help Agents discover acceptable issuers, but it never delegates verification behavior to the Agent, and it does not decide validity — the request's `dcql_query` and `trusted_authorities` do. When the referenced Issuer Trust List identifies OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery.
+
+### Relayed Delivery to a Remote Handler
+
+Native invocation returns the presentation through the `navigator.credentials.get()` call, so it needs no return channel. When an intermediary — for example, an MCP tool or other Agent — instead hands the request to a **remote handler** (a web wallet or service that produces the presentation without invoking the Digital Credentials API itself), two things must be supplied that the Verifier cannot know: where the result is returned, and how a non-DC-API handler is expected to process a Digital Credentials request. The intermediary forwards the request unchanged and adds only the return channel.
+
+#### Return Channel
+
+An intermediary that relays the x401 payload to a remote handler MUST add a `return_uri` member to the payload it forwards. `return_uri` is an `https` URL the handler delivers the [[ref: Presentation Result]] to; it is supplied by the relaying intermediary, never by the Verifier, and SHOULD be unguessable, short-lived, single-use, and controlled by the intermediary. The handler returns the result by sending an HTTP `POST` of the `{ "protocol": ..., "data": ... }` Presentation Result to `return_uri`. The intermediary then packages that result into a VP Artifact (inline or as a [[ref: Presentation Reference]]) and retries the protected route.
+
+```json
+{
+  "scheme": "x401",
+  "version": "0.2.0",
+  "presentation_requirements": { "requests": [ { "protocol": "openid4vp-v1-signed", "data": { "request": "eyJ..." } } ] },
+  "oauth": { "token_endpoint": "https://bank.example.com/oauth/token" },
+  "return_uri": "https://mcp.example/x401/return/9f1c2a"
+}
+```
+
+#### Handler Processing
+
+The intermediary passes `presentation_requirements` to the handler unchanged; the handler is not asked to disassemble it, nor is it told which entry to use. It evaluates the request the way the Digital Credentials API would and returns a presentation for whichever entry it can satisfy. A remote handler that does not invoke the Digital Credentials API:
+
+1. MUST consider the `requests[]` entries whose `protocol` and credential formats it implements, and among those, MUST attempt to satisfy each entry's `dcql_query` — including any `credential_sets` / `claim_sets` alternatives within it — against the credentials available to it, with Holder selection where applicable. Which entry is used is the *outcome* of this matching, not a prior choice; an entry is usable only if a held credential satisfies its query.
+2. For a satisfiable entry, MUST read the OpenID4VP request from its `data` — the claims of the signed request object for `openid4vp-v1-signed`, or the request parameters directly for `openid4vp-v1-unsigned` — and produce a presentation that satisfies that `dcql_query`, bound to its `nonce`. It honors `client_metadata` for accepted formats and any response-encryption key, and, for a signed request, binds the presentation's audience to the request's `client_id`.
+3. MUST treat the Digital Credentials API transport members as not applicable to relayed delivery: it does not return through `response_mode: dc_api`/`dc_api.jwt` (it returns to `return_uri` instead) and does not enforce `expected_origins` (there is no invoking Web origin).
+4. MUST NOT weaken or alter the `dcql_query` or `nonce`, and MUST deliver the resulting [[ref: Presentation Result]] to `return_uri`. If it can satisfy no entry, it returns no presentation and SHOULD signal that failure to the intermediary rather than returning a partial or substitute result.
+
+This matching, credential discovery, and Holder selection follow the same OpenID4VP and DCQL rules a Wallet applies under the Digital Credentials API; x401 does not redefine them.
+
+Because relayed delivery does not go through a Web origin, `expected_origins` is not enforced. A signed request still binds the presentation's audience to the Verifier through its `client_id`, so signed requests are RECOMMENDED for relayed delivery — they preserve Verifier audience binding across the relay, losing only origin pre-authorization. An unsigned request has no `client_id` and so binds only to the `nonce`. A Verifier that supports relayed delivery validates the returned presentation by its `nonce` and, for a signed request, its `client_id`, accepting that origin pre-authorization was not enforced — the weaker-binding case described in [Verifier Binding](#verifier-binding).
 
 ## Verifiable Presentation Delivery
 
@@ -1299,7 +1331,9 @@ x401 binds a presentation to the Verifier in one of two ways, depending on the r
 
 **Unsigned requests (`openid4vp-v1-unsigned`).** There is no signature and no `client_id`; the Wallet uses the invoking origin as the relying-party identity and binds the presentation to that origin and the Verifier's `nonce`. This lets the request be fulfilled at an origin the Verifier did not declare — the case signed requests cannot serve — at a real cost: the Wallet cannot authenticate the Verifier, and the Verifier cannot pre-authorize the invocation origin. A malicious page or relay that obtains the request can invoke it from its own origin in front of a different holder and relay the resulting presentation back, so a Verifier that accepts an unsigned presentation on the strength of the `nonce` alone is exposed to credential harvesting and relay. A Verifier that uses unsigned requests therefore relies on the freshness and uniqueness of its `nonce` for replay protection and SHOULD compensate for the missing origin pre-authorization — for example by binding the proof to an authenticated Agent (see [Agent Binding Options](#agent-binding-options)), by constraining the observed invocation origin, or by trusting the delivery channel.
 
-In both modes the Verifier MUST validate the binding its request mode provides and MUST reject a presentation it cannot bind to the request it issued. The `nonce` provides freshness and correlation in both modes; it does not, by itself, authenticate the Verifier or constrain the invocation origin.
+**Relayed delivery.** When the request is fulfilled by a remote handler that does not invoke the Digital Credentials API (see [Relayed Delivery to a Remote Handler](#relayed-delivery-to-a-remote-handler)), there is no invoking Web origin, so `expected_origins` is not enforced regardless of request mode. A *signed* request still binds the presentation's audience to the Verifier through its `client_id`, so relayed delivery of a signed request preserves Verifier audience binding and loses only origin pre-authorization — strictly stronger than unsigned. A *unsigned* request relayed this way has no `client_id` and falls back to `nonce`-only binding. Either way the Verifier SHOULD compensate for the absent origin pre-authorization as it would for an unsigned request.
+
+In all modes the Verifier MUST validate the binding its request mode and transport provide and MUST reject a presentation it cannot bind to the request it issued. The `nonce` provides freshness and correlation throughout; it does not, by itself, authenticate the Verifier or constrain the invocation origin.
 
 ### Agent Binding
 
@@ -1576,6 +1610,11 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
       "type": "array",
       "items": { "type": "string" },
       "description": "Optional Agent-visible reuse hint: stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy."
+    },
+    "return_uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional. Added by a relaying intermediary (never by the Verifier) to tell a remote handler where to POST the presentation result. See Relayed Delivery to a Remote Handler."
     },
     "payment": {
       "type": "object",
