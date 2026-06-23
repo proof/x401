@@ -5,6 +5,10 @@ Status: [[badge: Draft]]
 
 Version: 0.2.0
 
+Latest Draft: https://x401.id/spec/latest
+
+Previous Version: https://x401.id/spec/0.1.0
+
 Editors:
 ~ [Daniel Buchner](https://www.linkedin.com/in/dbuchner) - [Proof](https://proof.com)
 ~ [Bhushit Agarwal](https://www.linkedin.com/in/bhushitagarwal/) - [Circle](https://circle.com)
