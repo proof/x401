@@ -1202,6 +1202,47 @@ Authorization: Bearer <existing-application-token>
 PROOF-PRESENTATION: <base64url-x401-token-object>
 ```
 
+### Example 3: Combined Proof and Payment on One Route
+
+A single route requires both an x401 proof and a payment, with the Agent bound by a wallet-native [[ref: Agent Identifier]]. See [Proof and Payment Binding](#proof-and-payment-binding). The payment protocol below is shown only as an example.
+
+The Verifier advertises both requirements. Payment is genuinely unsatisfied, so the Verifier uses `402 Payment Required`; per [Status Code Independence](#status-code-independence) the `PROOF-REQUIRED` carrier is independent of that status:
+
+```http
+HTTP/1.1 402 Payment Required
+PROOF-REQUIRED: <base64url-x401-payload>
+Cache-Control: no-store
+```
+
+The decoded `PROOF-REQUIRED` payload's `presentation_requirements` carries the Verifier-composed, signed OpenID4VP request (`protocol: "openid4vp-v1-signed"`, with `client_id`, `expected_origins`, `nonce`, and `dcql_query`). The response also carries the chosen payment protocol's own requirement (for example, an x402 payment requirement). The x401 `payment` hint object MAY additionally advertise `{ "required": true, "scheme_hint": "x402" }`.
+
+The Agent retries the same route, carrying the proof presentation in `PROOF-PRESENTATION` together with the example payment protocol's artifact. The payment artifact travels in the payment protocol's own header or body (for example, an x402 payment payload), not inside x401's headers:
+
+```http
+POST /accounts/applications HTTP/1.1
+Host: bank.example.com
+PROOF-PRESENTATION: <base64url-vp-artifact-json>
+```
+
+On success the Verifier runs the payment protocol's non-settling verification step, reads the payer identity, and finds it satisfies the binding policy — for example, the payer is the credential-attested `did:pkh:eip155:<chainId>:<address>` wallet. Proof, Agent binding, payer binding, and freshness all pass, so the Verifier settles and completes the route.
+
+On a binding failure the payer is neither the bound Agent nor any credential-attested key. The Verifier moves no funds and returns an x401 Error Object in `PROOF-RESPONSE`:
+
+```http
+HTTP/1.1 402 Payment Required
+PROOF-RESPONSE: <base64url-x401-error-object>
+Cache-Control: no-store
+```
+
+```json
+{
+  "scheme": "x401",
+  "version": "0.2.0",
+  "error": "payer_agent_mismatch",
+  "error_description": "Payment artifact payer is not the bound Agent Identifier or a credential-attested key."
+}
+```
+
 ## Composable Agent and Entity Identification
 
 A returned presentation is already bound to the Verifier (for a signed request) or to the invoking origin and the Verifier's nonce (for an unsigned request); see [Verifier Binding](#verifier-binding). x401 does not, by default, require the presentation to be bound to the Agent, and it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
@@ -1245,6 +1286,14 @@ Workload identity proves the caller's operational identity. It does not prove th
 In the composed-request model the presentation request never identifies the Agent: for a signed request the `client_id` identifies the Verifier as relying party, and an unsigned request has no `client_id` at all. A deployment that binds the Agent therefore does so at the HTTP or token layer rather than through the presentation request. The [[ref: Agent Identifier]] MAY be a DID, HTTPS origin, domain-bound client identifier, certificate-bound identifier, SPIFFE ID, or other verifier-approved scheme.
 
 The Verifier determines that the protected-route caller is the required Agent Identifier using a verifier-recognized mapping across the HTTP Message Signature identity, mutual TLS certificate, DPoP key, workload identity, or Verification Token holder identity used on the retry. Because the presentation is bound to the Verifier, this caller binding is what ties the proof to a specific Agent when a deployment requires it.
+
+### Wallet-Native Agent Identifiers
+
+A deployment that binds the Agent MAY accept a wallet-native [[ref: Agent Identifier]] of the form `did:pkh:eip155:<chainId>:<address>` as one of its verifier-approved Agent Identifier schemes. This is an identity profile only: it carries no payment semantics and does not change the `402 Payment Required` boundary. The profile is OPTIONAL — a Verifier need not accept wallet-native identifiers, and x401 registers no Agent Identifier scheme of its own — but a Verifier that accepts it MUST apply the rules in this subsection.
+
+The chain identifier is part of the identity. The same `<address>` under a different `<chainId>` is not automatically the same identity. This matters most for smart-contract accounts, where the same address can resolve to a different contract on a different chain; for an externally owned account the same key controls the same address across EVM chains, but a Verifier MUST NOT generalize that assumption to smart-contract accounts.
+
+A Verifier that accepts this profile MUST verify control of a wallet-native Agent Identifier using the account's own signature rules. The Verifier computes the EIP-191-encoded digest of the signing input it requires the holder to sign, and then: for an externally owned account, recovers the `secp256k1` signer of that digest and compares it to the address in the `did:pkh` CAIP-10 account id; for a smart-contract account, validates the same digest and signature through ERC-1271. A Verifier that cannot classify the account in advance MAY try ERC-1271 validation and `secp256k1` recovery, but it MUST NOT assume a recoverable signature for a smart-contract account.
 
 ### Delegation and Actor Evidence
 
@@ -1383,6 +1432,31 @@ Verification Tokens SHOULD be short-lived, revocable, and scoped to the accepted
 
 Implementations MUST keep proof and payment semantics separate. A proof artifact MUST NOT be treated as payment, and payment satisfaction MUST NOT be treated as proof satisfaction.
 
+### Proof and Payment Binding
+
+When a protected route requires both x401 proof satisfaction and a machine-payment artifact, and the deployment binds the protected-route retry to an [[ref: Agent Identifier]] (see [Agent Identifier Schemes and HTTP-Layer Binding](#agent-identifier-schemes-and-http-layer-binding)), the Verifier MUST determine the payer identity asserted by the payment artifact — obtained through the payment protocol's non-settling verification step, which yields the identity authorized to pay before any funds move — and MUST confirm that payer identity satisfies the Verifier's Agent-binding policy.
+
+The binding policy is satisfied only when the payer identity is one of:
+
+1. the bound Agent Identifier itself; or
+2. a key or account explicitly attested for that Agent Identifier inside the presented, signed credential.
+
+Otherwise the Verifier MUST NOT treat the proof and the payment as a single authorized transaction.
+
+Where the payer is the wallet-native Agent Identifier account itself (see [Wallet-Native Agent Identifiers](#wallet-native-agent-identifiers)), both the credential's holder key-binding and the payer identity MUST be verified using that account's signature rules (EIP-191 for externally owned accounts; ERC-1271 for smart-contract accounts), so that the holder and the payer are evaluated under the same on-chain authority. Where the payer is instead a credential-attested authorized key (the second binding-policy case above), it is verified under its own key or account rules together with the credential's attestation, not under the Agent Identifier account's rules.
+
+A Verifier MUST validate proof satisfaction, caller/Agent binding when required, payer binding, and freshness before it settles, captures, or otherwise irreversibly moves funds. A request that fails proof, policy, Agent binding, payer binding, or freshness MUST be rejected with no funds moved.
+
+A binding failure MUST be reported as an [x401 Error Object](#x401-error-object) carried in `PROOF-RESPONSE` (for example, an `error` value of `payer_agent_mismatch`), and MUST NOT be reported only as a payment-protocol error.
+
+An authorized or session key MAY satisfy the binding policy only when it is attested for the Agent Identifier inside the signed credential. In that case the Verifier MUST verify the payer under that key or account's own signature rules (the wallet-native account rules above when the authorized key is itself a blockchain account), and MUST rely on the issuer's in-credential attestation — not an Agent-supplied list — to bind that key to the Agent Identifier. When the credential carries constraints — for example a per-transaction or aggregate spend limit, an allowed-actions list, or an expiry — the Verifier MUST enforce those constraints before settlement. The full delegation format remains out of scope (see [Fully Autonomous Delegation](#fully-autonomous-delegation)).
+
+A Verifier MAY advertise both the proof requirement and the payment requirement in a single response. Per [Status Code Independence](#status-code-independence), the Agent acts on the requirement headers, not on the HTTP status code.
+
+Before settlement, a Verifier MUST confirm that the proof presentation, the route and method, the payment quote, and the payment artifact all correspond to the same unexpired verifier-issued request context; a Verifier MUST NOT settle when that request context has expired or when any of these do not correspond to it. The request context — including the OpenID4VP `nonce`, route, and method — is the Verifier's own, established when it issued the proof requirement (see [Replay Prevention](#replay-prevention)); it is not scoped to whatever fields the selected payment protocol happens to carry. Proof-first sequencing is RECOMMENDED: settlement is irreversible, whereas a proof presentation is replay-checkable against the OpenID4VP `nonce` and cheap to re-request. A Verifier MAY run the proof and payment legs in parallel only where it can complete the payment protocol's non-settling verification step without settling.
+
+This rule is consistent with [Payment Separation](#payment-separation): each requirement is still satisfied on its own terms — the proof artifact is never treated as payment, and payment is never treated as proof — and the binding adds only a cross-check that the same Agent satisfied both.
+
 ## Privacy Considerations
 
 ### Data Minimization
@@ -1418,6 +1492,12 @@ A conforming x401 Verifier:
 - returns `PROOF-RESPONSE: <base64url-x401-error-object>` when reporting x401 proof presentation or token errors
 - optionally includes a DIF Credential Trust Establishment URL for issuer trust and acquisition guidance
 - keeps payment separate under `402 Payment Required`
+- when a protected route requires both x401 proof satisfaction and a machine-payment artifact and the route binds the Agent, determines the payer identity through the payment protocol's non-settling verification step before settlement
+- when both are required, validates that payer identity against the required [[ref: Agent Identifier]] or a credential-attested authorized key/account
+- when a retry carries x401 proof material and a payment artifact, rejects a binding mismatch with an x401 Error Object in `PROOF-RESPONSE` rather than only a payment-protocol error
+- when both are required, never settles on a proof, policy, Agent-binding, payer-binding, or freshness failure
+- when both are required, preserves proof/payment separation under `402 Payment Required`
+- when a wallet-native Agent Identifier is accepted, respects chain and account context, including ERC-1271 verification for smart-contract accounts
 
 A conforming x401 Agent:
 
@@ -1441,6 +1521,8 @@ The items below are questions intentionally left open at the time of the initial
 How should x401 compose with machine-payment protocols that use `402 Payment Required`? Future work should define recommended sequencing for proof-first, payment-first, and parallel proof/payment flows while preserving the current boundary that x401 handles proof and `402` handles payment.
 
 Open design questions include how a payment artifact should be bound to the x401 route, method, request nonce, any Agent Identifier, and payment quote; whether a `402` response should reference the same proof context as the earlier x401 response; how proof freshness and payment settlement freshness interact; and how protocols such as x402, AP2, ACP, or UCP should carry or reference x401 proof satisfaction without redefining it.
+
+The [Proof and Payment Binding](#proof-and-payment-binding) section now settles the identity-binding invariant for the combined case: when a route requires both proof and a payment artifact and binds the Agent, the payer identity MUST be the bound Agent Identifier or a credential-attested authorized key, validated before settlement, against the same unexpired verifier-issued request context, with `payer_agent_mismatch` reported in `PROOF-RESPONSE`. What remains open is the per-protocol carrier mappings for x402, AP2, ACP, and UCP (and MPP), the payment-quote binding mechanics, and the full sequencing guidance beyond the recommended proof-first default.
 
 ### Fully Autonomous Delegation
 
@@ -1472,6 +1554,10 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [OpenID for Verifiable Credential Issuance 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html)
 - [W3C Digital Credentials API](https://www.w3.org/TR/digital-credentials/)
 - [DIF Credential Trust Establishment 1.0](https://identity.foundation/credential-trust-establishment/)
+- [did:pkh Method Specification](https://github.com/w3c-ccg/did-pkh/blob/main/did-pkh/did-pkh-method-draft.md) — normative for the optional Wallet-Native Agent Identifiers profile when a Verifier accepts it
+- [CAIP-10: Account ID Specification](https://chainagnostic.org/CAIPs/caip-10) — the `eip155:<chainId>:<address>` account form used by the wallet-native profile
+- [EIP-191: Signed Data Standard](https://eips.ethereum.org/EIPS/eip-191) — externally-owned-account signature verification for wallet-native binding
+- [ERC-1271: Standard Signature Validation Method for Contracts](https://eips.ethereum.org/EIPS/eip-1271) — smart-contract-account signature verification for wallet-native binding
 
 ### Informative
 
