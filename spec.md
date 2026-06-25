@@ -23,6 +23,7 @@ Contributors & Reviewers:
 ~ [Oliver Terbu](https://www.linkedin.com/in/oliver-terbu/) - [MATTR](https://mattr.global/)
 ~ [Tobias Looker](https://www.linkedin.com/in/tplooker/) - [MATTR](https://mattr.global/)
 ~ [Gareth Oliver](https://www.linkedin.com/in/gareth-oliver-1231b481/) - [Google](https://google.com)
+~ [Adam Lemmon](https://www.linkedin.com/in/adamjlemmon/) - [Proof](https://proof.com)
 
 Participate:
 ~ [GitHub repo](https://github.com/proof/x401)
