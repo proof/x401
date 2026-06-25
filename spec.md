@@ -19,6 +19,10 @@ Contributors & Reviewers:
 ~ [Tim Cappalli](https://www.linkedin.com/in/timcappalli/) - [Okta](https://okta.com)
 ~ [Nick Steele](https://www.linkedin.com/in/nickelsteele/) - [OpenAI](https://openai.com)
 ~ [Reema Bajwa](https://www.linkedin.com/in/reema-bajwa/) - [Google](https://google.com)
+~ [Jacky Lao](https://www.linkedin.com/in/jackylao/) - [Lightspark](https://www.lightspark.com/)
+~ [Oliver Terbu](https://www.linkedin.com/in/oliver-terbu/) - [MATTR](https://mattr.global/)
+~ [Tobias Looker](https://www.linkedin.com/in/tplooker/) - [MATTR](https://mattr.global/)
+~ [Gareth Oliver](https://www.linkedin.com/in/gareth-oliver-1231b481/) - [Google](https://google.com)
 
 Participate:
 ~ [GitHub repo](https://github.com/proof/x401)
@@ -40,10 +44,10 @@ x401 uses:
 - the **W3C Digital Credentials API (DC API)** request shape as the carrier for the Verifier-composed presentation request, so the request can be executed by native credential wallet/handler methods or relayed to other wallets and remote services
 - **OpenID for Verifiable Presentations (OpenID4VP)** over the DC API for the composed presentation request, using **Digital Credentials Query Language (DCQL)** to describe the credential requirements
 - **OAuth 2.0** for optional exchange of a verified presentation for an access token
-- **DIF Credential Trust Establishment** for verifier-approved issuer policy and non-authoritative acquisition guidance
-- **OpenID for Verifiable Credential Issuance (OpenID4VCI)** for resolving credential issuer metadata when the referenced trust document identifies OpenID4VCI issuers
+- the **DCQL `trusted_authorities`** the Verifier already places inside the request as the authoritative issuer constraint, and — for its dereferenceable types (`openid_federation`, `etsi_tl`) — as the acquisition and discovery hint an Agent can follow to find where qualifying credentials are issued
+- **OpenID for Verifiable Credential Issuance (OpenID4VCI)** for resolving credential issuer metadata when the request's `trusted_authorities` resolve to OpenID4VCI issuers
 
-The x401 payload carries a composed, valid Digital Credentials request authored by the Verifier. The Verifier authors the request and, in the RECOMMENDED signed mode, is its relying party. The request is placed at the payload's `presentation_requirements` member so it can be executed directly through native credential wallet/handler methods (`navigator.credentials.get({ digital: payload.presentation_requirements })`), relayed to another web wallet or remote presentation service, or handed off for fully remote generation. The payload's other top-level members — such as OAuth token exchange metadata, an issuer trust reference, and reusable requirement identifiers — carry x401-specific values that are not yet expressible inside a native Digital Credentials request.
+The x401 payload carries a composed, valid Digital Credentials request authored by the Verifier. The Verifier authors the request and, in the RECOMMENDED signed mode, is its relying party. The request is carried in the `digital` member of the payload's `credential_requirements` — itself a `CredentialRequestOptions` value usable directly as the argument to native credential wallet/handler methods (`navigator.credentials.get(payload.credential_requirements)`) — so it can be executed directly, relayed to another web wallet or remote presentation service, or handed off for fully remote generation. This version of x401 specifies only the `digital` member; the container leaves room for other `navigator.credentials.get()` request types in future versions. The payload's other top-level members — such as OAuth token exchange metadata and reusable requirement identifiers — carry x401-specific values that are not yet expressible inside a native Digital Credentials request.
 
 x401 is intentionally separate from payment protocols. When payment is required, it MUST be handled with **HTTP 402 Payment Required** and an appropriate payment protocol. x401 MUST NOT redefine payment semantics.
 
@@ -70,14 +74,14 @@ x401 fills that gap by defining an HTTP-native wrapper that:
 
 - signals proof requirements at the protected route
 - carries x401 proof objects as base64url values in dedicated proof header fields
-- carries a composed, valid Digital Credentials request, authored and signed by the Verifier, at the payload's `presentation_requirements` member
+- carries a composed, valid Digital Credentials request, authored and signed by the Verifier, in the `digital` member of the payload's `credential_requirements`
 - recommends a signed OpenID4VP request for the DC API — making the Verifier the relying party and binding the request to the Verifier independently of which surface invokes it — while allowing an unsigned request when the request must be fulfilled at an invocation origin the Verifier cannot declare in advance
 - lets the [[ref: Agent]] execute the request through native credential methods, relay it to another wallet or remote service, or hand it off for fully remote generation and then acquire the result
 - includes OAuth token exchange metadata for Agents that want a reusable access token after proving
-- optionally includes a DIF Credential Trust Establishment URL that can help Agents discover acceptable credential issuers
+- lets Agents discover where to acquire qualifying credentials by following the dereferenceable issuer pointers (`openid_federation`, `etsi_tl`) the Verifier already places in the request's DCQL `trusted_authorities`, without adding an x401-specific issuer list
 - composes with, but does not subsume, payment protocols
 
-In the typical flow, an [[ref: Agent]] receives an x401 proof requirement from a [[ref: Verifier]], obtains a presentation for the Verifier-composed [[ref: Presentation Request]] — by invoking the request through native credential methods, relaying it to a [[ref: Wallet]], or acquiring a remotely generated result — and retries the original protected route with the presentation result inline or by reference. An [[ref: Issuer Trust List]] can help the Agent discover credentials or issuers, but the Verifier remains authoritative for issuer trust enforcement.
+In the typical flow, an [[ref: Agent]] receives an x401 proof requirement from a [[ref: Verifier]], obtains a presentation for the Verifier-composed [[ref: Presentation Request]] — by invoking the request through native credential methods, relaying it to a [[ref: Wallet]], or acquiring a remotely generated result — and retries the original protected route with the presentation result inline or by reference. The dereferenceable issuer pointers in the request's DCQL `trusted_authorities` can help the Agent discover where to acquire qualifying credentials, but the Verifier remains authoritative for issuer trust enforcement.
 
 ## Design Goals
 
@@ -90,7 +94,7 @@ The goals of x401 are:
 5. Reserve the top level of the x401 payload, alongside the native request, for x401-specific values that are not yet expressible inside a native Digital Credentials request.
 6. Reuse OpenID4VP over the DC API, DCQL, OAuth, and OpenID4VCI rather than redefining them.
 7. Remain separate from payment semantics.
-8. Allow issuer discovery by reference to verifier trust policy without listing issuers inline in the x401 payload.
+8. Allow issuer discovery and credential acquisition to follow the issuer constraints the Verifier already expresses in the request's DCQL `trusted_authorities`, without adding an x401-specific issuer list.
 9. Support stateless verifier deployments without dictating how the Verifier achieves it.
 10. Allow optional caller authentication, request signing, and delegation artifacts to compose with x401 without making any one agent identity or binding system mandatory.
 
@@ -127,16 +131,13 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ Software capable of receiving an OpenID4VP request through the Digital Credentials API or another transport and returning a presentation result authorized by a [[ref: Holder]].
 
 [[def: Digital Credentials Request]]:
-~ The composed, valid Digital Credentials request the Verifier places at the payload's `presentation_requirements` member. It is a `DigitalCredentialRequestOptions` value (`{ "requests": [ ... ] }`) usable directly as the `digital` member of `navigator.credentials.get()`. Each entry is an OpenID4VP request for the DC API, signed (RECOMMENDED) or unsigned.
+~ The composed, valid Digital Credentials request the Verifier places in the `digital` member of the payload's `credential_requirements`. It is a `DigitalCredentialRequestOptions` value (`{ "requests": [ ... ] }`) — the value the `digital` member of `navigator.credentials.get()` takes. Each entry is an OpenID4VP request for the DC API, signed (RECOMMENDED) or unsigned.
 
 [[def: Presentation Request]]:
 ~ The Verifier-authored OpenID4VP request carried inside the [[ref: Digital Credentials Request]]. It identifies the credential requirement as `dcql_query` and carries the OpenID4VP `nonce`. When signed (RECOMMENDED), the Verifier is its relying party and it binds to the Verifier through the request signature, `client_id`, and `expected_origins`; when unsigned, it binds to the invoking origin and the `nonce`. See [Verifier Binding](#verifier-binding).
 
 [[def: Presentation Result]]:
 ~ The result a Wallet returns for a [[ref: Digital Credentials Request]], shaped as `{ "protocol": ..., "data": ... }` as returned by the Digital Credentials API.
-
-[[def: Issuer Trust List]]:
-~ A verifier-controlled DIF Credential Trust Establishment document that identifies the issuers, authorities, roles, activities, credential schemas, or credential types the Verifier accepts for a proof requirement. The same document can also help Agents discover where qualifying credentials may be obtained.
 
 [[def: VP Artifact]]:
 ~ A retry artifact carrying a [[ref: Presentation Result]] — either inline or as a [[ref: Presentation Reference]] — together with the x401 metadata the Verifier needs to correlate proof fulfillment, encoded for use in a `PROOF-PRESENTATION` request header or OAuth token exchange.
@@ -174,10 +175,10 @@ Cache-Control: no-store
 
 :: 2. Obtaining a Presentation
 
-The Agent decodes the x401 payload and obtains a presentation for the Verifier-composed request at the payload's `presentation_requirements` member. The Agent does not compose or alter the request; it invokes it through native credential methods, relays it to a Wallet or remote service, or acquires a remotely generated result; see [Obtaining a Presentation](#obtaining-a-presentation) for details. The composed request is directly usable as the `digital` member of `navigator.credentials.get()`.
+The Agent decodes the x401 payload and obtains a presentation for the Verifier-composed request carried in the `digital` member of the payload's `credential_requirements`. The Agent does not compose or alter the request; it invokes it through native credential methods, relays it to a Wallet or remote service, or acquires a remotely generated result; see [Obtaining a Presentation](#obtaining-a-presentation) for details. The `credential_requirements` object is directly usable as the argument to `navigator.credentials.get()`.
 
 ```js
-const result = await navigator.credentials.get({ digital: payload.presentation_requirements });
+const result = await navigator.credentials.get(payload.credential_requirements);
 // result => { protocol: "openid4vp-v1-signed", data: { /* presentation result */ } }
 ```
 
@@ -219,9 +220,9 @@ In the primary x401 flow, the [[ref: Agent]] is the HTTP caller and is assumed t
 2. The [[ref: Verifier]] determines that proof is required.
 3. The [[ref: Verifier]] returns an HTTP response with:
    - `PROOF-REQUIRED: <base64url-x401-payload>`
-4. The [[ref: Agent]] decodes the x401 payload and reads the composed [[ref: Digital Credentials Request]] at the `presentation_requirements` member and the OAuth token endpoint.
-5. The [[ref: Agent]] obtains a [[ref: Presentation Result]] for `presentation_requirements` without altering it, by one of:
-   - invoking the request through a native credential method such as `navigator.credentials.get({ digital: payload.presentation_requirements })`,
+4. The [[ref: Agent]] decodes the x401 payload and reads the composed [[ref: Digital Credentials Request]] in the `digital` member of `credential_requirements` and the OAuth token endpoint.
+5. The [[ref: Agent]] obtains a [[ref: Presentation Result]] for `credential_requirements` without altering it, by one of:
+   - invoking the request through a native credential method such as `navigator.credentials.get(payload.credential_requirements)`,
    - relaying the request to a Wallet or remote presentation service that can execute it, or
    - handing the request to a remote fulfillment surface and acquiring the generated result.
 6. The chosen Wallet, handler, or service returns a presentation result bound per the request's mode — to the Verifier as relying party for a signed request, or to the invoking origin and nonce for an unsigned request.
@@ -387,16 +388,15 @@ The payload SHOULD remain compact. Sensitive route state SHOULD be omitted, stor
 {
   "scheme": "x401",
   "version": "0.2.0",
-  "presentation_requirements": {},
+  "credential_requirements": {},
   "oauth": {},
-  "trust_establishment": "https://...",
   "request_id": "...",
   "satisfied_requirements": [],
   "payment": {}
 }
 ```
 
-The top level of the x401 payload is itself the envelope: the native, standard Digital Credentials request is the `presentation_requirements` member, and the remaining x401-specific members — which are not yet expressible inside a native Digital Credentials request — sit alongside it so the Agent and Verifier can polyfill their use.
+The top level of the x401 payload is itself the envelope: the native, standard credential request is the `credential_requirements` member — a `CredentialRequestOptions` value whose `digital` member carries the Digital Credentials request — and the remaining x401-specific members, which are not yet expressible inside a native credential request, sit alongside it so the Agent and Verifier can polyfill their use.
 
 #### Member Definitions
 
@@ -404,38 +404,38 @@ Name | Definition
 ---- | ----------
 `scheme` | REQUIRED. Value MUST be the string `"x401"`.
 `version` | REQUIRED. The x401 payload version.
-`presentation_requirements` | REQUIRED. The composed [[ref: Digital Credentials Request]]. See [Presentation Requirements](#presentation-requirements).
+`credential_requirements` | REQUIRED. The Verifier-composed credential request, a `CredentialRequestOptions` value. This version of x401 specifies its `digital` member, the composed [[ref: Digital Credentials Request]]. See [Credential Requirements](#credential-requirements).
 `oauth` | REQUIRED. OAuth token exchange metadata for obtaining a reusable Verification Token. See [OAuth Members](#oauth-members).
-`trust_establishment` | OPTIONAL. HTTPS URL of a DIF Credential Trust Establishment document, as an acquisition and discovery hint. See [Trust Establishment](#trust-establishment).
 `request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template, as an Agent-visible hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
 `satisfied_requirements` | OPTIONAL. Stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy, as an Agent-visible reuse hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
 `return_uri` | OPTIONAL. An `https` URL added by a relaying intermediary (never by the Verifier) telling a remote handler where to deliver the presentation result. See [Relayed Delivery to a Remote Handler](#relayed-delivery-to-a-remote-handler).
 `payment` | OPTIONAL. Describes that payment is additionally required, without replacing `402` semantics.
 
-The credential requirement, the OpenID4VP `nonce`, and the request expiry all live inside the request in `presentation_requirements`; x401 does not duplicate them at the payload level. Of the payload-level members, only `presentation_requirements` and `oauth` are load-bearing; `trust_establishment`, `request_id`, and `satisfied_requirements` are optional hints and optimizations.
+The credential requirement, the OpenID4VP `nonce`, and the request expiry all live inside the request in `credential_requirements.digital`; x401 does not duplicate them at the payload level. Of the payload-level members, only `credential_requirements` and `oauth` are load-bearing; `request_id` and `satisfied_requirements` are optional hints and optimizations. Issuer constraints and any acquisition pointers live inside the request, in its DCQL `trusted_authorities`, not at the payload level.
 
-### Presentation Requirements
+### Credential Requirements
 
-The `presentation_requirements` member carries the Verifier-composed [[ref: Digital Credentials Request]]. The Verifier authors it; in the RECOMMENDED signed mode it also signs the request and is its relying party (see [Verifier Binding](#verifier-binding)).
+The `credential_requirements` member is the Verifier-composed credential request: a `CredentialRequestOptions` value, usable directly as the argument to `navigator.credentials.get()`. This version of x401 specifies a single member, `digital`, which carries the [[ref: Digital Credentials Request]]. The object is structured so that other `navigator.credentials.get()` request types MAY be specified in future versions of x401; this version defines processing only for `digital` (see [Additional Credential Request Types](#additional-credential-request-types)). The Verifier authors the request; in the RECOMMENDED signed mode it also signs the request and is its relying party (see [Verifier Binding](#verifier-binding)).
 
 #### General Structure
 
 ```json
 {
-  "presentation_requirements": {
-    "requests": [
-      {
-        "protocol": "openid4vp-v1-signed",
-        "data": {
-          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+  "credential_requirements": {
+    "digital": {
+      "requests": [
+        {
+          "protocol": "openid4vp-v1-signed",
+          "data": {
+            "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+          }
         }
-      }
-    ]
+      ]
+    }
   },
   "oauth": {
     "token_endpoint": "https://bank.example.com/oauth/token"
   },
-  "trust_establishment": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1",
   "request_id": "proof-template-financial-customer-v1",
   "satisfied_requirements": [
     "urn:example:x401:satisfaction:financial-customer:v1"
@@ -443,7 +443,7 @@ The `presentation_requirements` member carries the Verifier-composed [[ref: Digi
 }
 ```
 
-`presentation_requirements` is a `DigitalCredentialRequestOptions` value, usable directly as the `digital` member of `navigator.credentials.get()`. Each entry in `requests` is an OpenID4VP request for the DC API. The example below uses the RECOMMENDED signed form, whose JAR carries the OpenID4VP request the Verifier authored — RP identity and freshness live there, not in any x401-specific field. Decoded for readability, a typical JAR payload is:
+The `digital` member is a `DigitalCredentialRequestOptions` value — the value the `digital` member of `navigator.credentials.get()` takes. Each entry in its `requests` array is an OpenID4VP request for the DC API. The example below uses the RECOMMENDED signed form, whose JAR carries the OpenID4VP request the Verifier authored — RP identity and freshness live there, not in any x401-specific field. Decoded for readability, a typical JAR payload is:
 
 ```json
 {
@@ -474,15 +474,18 @@ The `presentation_requirements` member carries the Verifier-composed [[ref: Digi
 }
 ```
 
-The `presentation_requirements` member is a `DigitalCredentialRequestOptions` value, usable directly as the `digital` member of `navigator.credentials.get()`. The credential requirement (`dcql_query`), the OpenID4VP `nonce`, and the request expiry (`exp`) all live inside the request; x401 does not restate or duplicate them at the payload level, and adds no expiry member of its own.
+The `credential_requirements.digital` value is a `DigitalCredentialRequestOptions`. The credential requirement (`dcql_query`), the OpenID4VP `nonce`, and the request expiry (`exp`) all live inside the request; x401 does not restate or duplicate them at the payload level, and adds no expiry member of its own.
 
 #### Request Members
 
+This version of x401 specifies the `digital` member of `credential_requirements`. It is a `DigitalCredentialRequestOptions` with the following members:
+
 Name | Definition
 ---- | ----------
-`requests` | REQUIRED. A non-empty array of Digital Credentials request entries. A Verifier MAY include more than one entry (for example, offering different credential formats) for a Wallet, handler, or remote service to select among. Every entry MUST be a valid OpenID4VP request for the DC API.
-`requests[].protocol` | REQUIRED. The DC API protocol identifier. For this version of x401 the value MUST be `"openid4vp-v1-signed"` (RECOMMENDED) or `"openid4vp-v1-unsigned"`. See [Verifier Binding](#verifier-binding) for the trade-off.
-`requests[].data` | REQUIRED. The protocol-specific request data. For `openid4vp-v1-signed`, an object carrying the signed OpenID4VP request (a JWT-Secured Authorization Request); for `openid4vp-v1-unsigned`, the OpenID4VP request parameters directly.
+`digital` | REQUIRED in this version. The composed [[ref: Digital Credentials Request]], a `DigitalCredentialRequestOptions` carrying the `requests` array below.
+`digital.requests` | REQUIRED. A non-empty array of Digital Credentials request entries. A Verifier MAY include more than one entry (for example, offering different credential formats) for a Wallet, handler, or remote service to select among. Every entry MUST be a valid OpenID4VP request for the DC API.
+`digital.requests[].protocol` | REQUIRED. The DC API protocol identifier. For this version of x401 the value MUST be `"openid4vp-v1-signed"` (RECOMMENDED) or `"openid4vp-v1-unsigned"`. See [Verifier Binding](#verifier-binding) for the trade-off.
+`digital.requests[].data` | REQUIRED. The protocol-specific request data. For `openid4vp-v1-signed`, an object carrying the signed OpenID4VP request (a JWT-Secured Authorization Request); for `openid4vp-v1-unsigned`, the OpenID4VP request parameters directly.
 
 ### OAuth Members
 
@@ -493,12 +496,6 @@ Name | Definition
 `resource` | OPTIONAL. OAuth token exchange `resource` value the Agent should request.
 
 The x401 OAuth profile fixes `grant_type`, `subject_token_type`, and Bearer token usage. These values MUST NOT be repeated in the x401 payload.
-
-### Trust Establishment
-
-`trust_establishment` is an OPTIONAL acquisition and discovery hint. Its value is an HTTPS URL for a DIF Credential Trust Establishment document that describes the issuers, authorities, roles, activities, credential schemas, or credential types the Verifier approves for this proof requirement. It is not the mechanism that decides validity.
-
-Issuer enforcement is ultimately governed by the request, not by `trust_establishment`. Where the Verifier needs the Wallet to constrain acceptable issuers at presentation time, it expresses that with DCQL `trusted_authorities` inside the request in `presentation_requirements`. `trust_establishment` exists to help Agents and Wallets *discover* and *acquire* likely-acceptable credentials, and to convey richer ecosystem, role, or acquisition metadata than `trusted_authorities` carries; it MUST NOT enumerate approved issuers inline. The Verifier MUST enforce issuer trust during proof validation — against the `trusted_authorities` in the request and its own policy — and MUST NOT rely on the Agent's interpretation of the Issuer Trust List.
 
 ### Reusable Requirement Hints
 
@@ -516,15 +513,17 @@ Name | Definition
 {
   "scheme": "x401",
   "version": "0.2.0",
-  "presentation_requirements": {
-    "requests": [
-      {
-        "protocol": "openid4vp-v1-signed",
-        "data": {
-          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+  "credential_requirements": {
+    "digital": {
+      "requests": [
+        {
+          "protocol": "openid4vp-v1-signed",
+          "data": {
+            "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+          }
         }
-      }
-    ]
+      ]
+    }
   },
   "oauth": {
     "token_endpoint": "https://bank.example.com/oauth/token"
@@ -547,11 +546,17 @@ A Verifier MAY operate statelessly. Because the OpenID4VP `nonce` is the value e
 
 ### Credential Acquisition Guidance
 
-When a Verifier wants to disclose which issuers, authorities, roles, activities, credential schemas, or credential types can satisfy a proof requirement, it sets the `trust_establishment` member.
+x401 does not define a separate issuer list. The issuers a Verifier accepts are already expressed inside the request, as the DCQL `trusted_authorities` of each credential query in `credential_requirements.digital`. That same constraint is the acquisition hint: when an Agent does not already hold a qualifying credential, it discovers where to obtain one by resolving the `trusted_authorities` entries — for the entry types that are dereferenceable. This reuses the Verifier's authoritative issuer constraint as the discovery surface, so the discovery path and the enforcement path cannot diverge.
 
-Its value is an HTTPS URL pointing to an [[ref: Issuer Trust List]]. The Agent MAY use the referenced document to discover candidate credentials or credential issuers, and the Wallet MAY use it to help select credentials that are likely to satisfy the Verifier.
+Each `trusted_authorities` entry is a `{ "type": ..., "values": [...] }` object. How an Agent can resolve it for acquisition depends on its `type`:
 
-If the referenced Issuer Trust List identifies OpenID4VCI Credential Issuer Identifiers, Agents resolve those issuer identifiers using the OpenID4VCI issuer metadata discovery rules. See OpenID4VCI Section 12.2.2: <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html>.
+- **`openid_federation`** — each value is an HTTPS Entity Identifier. The Agent resolves it as an OpenID Federation entity by fetching `<value>/.well-known/openid-federation`. If the entity's `metadata` carries an `openid_credential_issuer` entry, that entity is itself a credential issuer and its OpenID4VCI metadata is published in-band. If the entity is a federation anchor or intermediate, the Agent walks the subordinate listing and trust chain to find subordinate entities that publish `openid_credential_issuer` metadata, validating the chain back to the anchor named in `values`. This is the fully resolvable path from issuer constraint to issuance endpoint.
+- **`etsi_tl`** — each value identifies an ETSI TS 119 612 Trusted List. The Agent MAY fetch and parse the list, enumerate the trust service providers and services whose service type matches the required credential, and follow a service's supply point to locate an issuer. Whether a listed service exposes an OpenID4VCI issuance endpoint is an ecosystem convention, not a guarantee of this format, so acquisition from `etsi_tl` is best-effort.
+- **`aki`** — each value is an Authority Key Identifier: an opaque issuer key identifier with no resolution mechanism. It constrains acceptable issuers but provides no acquisition pointer. For a request whose only issuer constraint is `aki`, x401 defines no native acquisition path; the Agent must already hold a qualifying credential or resolve the issuer out of band.
+
+When an entry resolves to one or more OpenID4VCI Credential Issuer Identifiers, the Agent resolves issuer metadata using the OpenID4VCI issuer metadata discovery rules and drives issuance against the discovered issuer. See OpenID4VCI Section 12.2.2: <https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html>.
+
+Acquisition guidance is advisory and never decides validity. The Verifier enforces issuer trust during proof validation against the `trusted_authorities` in the request it issued and its own policy, independently of how — or whether — the Agent used these pointers to acquire a credential.
 
 ### Payment Object
 
@@ -587,14 +592,14 @@ If proof is accepted but payment is still unsatisfied, the Verifier responds wit
 
 ## Obtaining a Presentation
 
-This leg defines how the Agent obtains a presentation for the Verifier-composed request at the payload's `presentation_requirements` member. The Verifier authored the request; the Agent does not compose it and is not, by default, its audience. The Agent's task is to get the request executed and to acquire the resulting [[ref: Presentation Result]].
+This leg defines how the Agent obtains a presentation for the Verifier-composed request carried in the `digital` member of the payload's `credential_requirements`. The Verifier authored the request; the Agent does not compose it and is not, by default, its audience. The Agent's task is to get the request executed and to acquire the resulting [[ref: Presentation Result]].
 
 An Agent obtains a presentation by one of the following, all of which carry the same Verifier-composed request unchanged:
 
 1. **Native invocation.** In an environment with the Digital Credentials API, the Agent invokes the request directly:
 
    ```js
-   const result = await navigator.credentials.get({ digital: payload.presentation_requirements });
+   const result = await navigator.credentials.get(payload.credential_requirements);
    // result => { protocol, data }
    ```
 
@@ -610,20 +615,20 @@ In every case the resulting presentation is bound per the request's mode and tra
 
 The composed request is authored and signed by the Verifier. The Agent treats it as opaque:
 
-1. The Agent MUST NOT modify any entry in `presentation_requirements`. The request signature binds its contents, so any modification invalidates it.
-2. When `presentation_requirements.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Wallet or handler implements, and MAY pass the entries through unchanged; which entry is ultimately used is determined by the Wallet or handler matching the request against available credentials, not chosen up front by the Agent.
+1. The Agent MUST NOT modify any entry in `credential_requirements`. The request signature binds its contents, so any modification invalidates it.
+2. When `credential_requirements.digital.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Wallet or handler implements, and MAY pass the entries through unchanged; which entry is ultimately used is determined by the Wallet or handler matching the request against available credentials, not chosen up front by the Agent.
 3. The Agent MUST arrange to acquire the [[ref: Presentation Result]] returned for the request, whether it invokes the request itself, relays it, or acquires a remotely generated result.
 
-A Verifier composing `presentation_requirements`:
+A Verifier composing `credential_requirements.digital`:
 
 1. MUST make each entry a valid OpenID4VP request for the Digital Credentials API, using `protocol: "openid4vp-v1-signed"` (RECOMMENDED) or `protocol: "openid4vp-v1-unsigned"`.
 2. SHOULD use a signed request and set its `client_id` and `expected_origins`. A signed request lets the Wallet authenticate the Verifier, binds the presentation's audience to the Verifier's identity, and lets the Verifier pre-authorize the invocation origin; see [Verifier Binding](#verifier-binding).
 3. MAY use an unsigned request when it needs the request fulfilled at an invocation origin it cannot declare in advance — for example, when the Agent invokes the request directly in its own context or relays it to an arbitrary surface. An unsigned request binds the presentation to the invoking origin and the Verifier's `nonce` rather than to a signed Verifier identity, with the trade-offs described in [Verifier Binding](#verifier-binding).
 4. MAY request response encryption (for example, a `dc_api.jwt` response mode with encryption keys in `client_metadata`) or omit it. Response encryption is OPTIONAL in x401.
 
-x401 does not restate the field-level rules for composing, signing, or invoking a Digital Credentials request; those are defined by the W3C Digital Credentials API and by OpenID4VP for the DC API. x401 requires only that `presentation_requirements` is a valid OpenID4VP request for the DC API; the Verifier validates whichever binding its chosen request mode provides.
+x401 does not restate the field-level rules for composing, signing, or invoking a Digital Credentials request; those are defined by the W3C Digital Credentials API and by OpenID4VP for the DC API. x401 requires only that `credential_requirements.digital` is a valid `DigitalCredentialRequestOptions` whose entries are valid OpenID4VP requests for the DC API; the Verifier validates whichever binding its chosen request mode provides.
 
-`trust_establishment` can help Agents discover acceptable issuers, but it never delegates verification behavior to the Agent, and it does not decide validity — the request's `dcql_query` and `trusted_authorities` do. When the referenced Issuer Trust List identifies OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery.
+The request's DCQL `trusted_authorities` can help Agents discover where to acquire acceptable credentials, but they never delegate verification behavior to the Agent, and discovery does not decide validity — the request's `dcql_query` and `trusted_authorities` do, as enforced by the Verifier. When a `trusted_authorities` entry resolves to OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery; see [Credential Acquisition Guidance](#credential-acquisition-guidance).
 
 ### Relayed Delivery to a Remote Handler
 
@@ -637,7 +642,7 @@ An intermediary that relays the x401 payload to a remote handler MUST add a `ret
 {
   "scheme": "x401",
   "version": "0.2.0",
-  "presentation_requirements": { "requests": [ { "protocol": "openid4vp-v1-signed", "data": { "request": "eyJ..." } } ] },
+  "credential_requirements": { "digital": { "requests": [ { "protocol": "openid4vp-v1-signed", "data": { "request": "eyJ..." } } ] } },
   "oauth": { "token_endpoint": "https://bank.example.com/oauth/token" },
   "return_uri": "https://mcp.example/x401/return/9f1c2a"
 }
@@ -645,7 +650,7 @@ An intermediary that relays the x401 payload to a remote handler MUST add a `ret
 
 #### Handler Processing
 
-The intermediary passes `presentation_requirements` to the handler unchanged; the handler is not asked to disassemble it, nor is it told which entry to use. It evaluates the request the way the Digital Credentials API would and returns a presentation for whichever entry it can satisfy. A remote handler that does not invoke the Digital Credentials API:
+The intermediary passes `credential_requirements` to the handler unchanged; the handler is not asked to disassemble it, nor is it told which entry to use. It evaluates the request the way the Digital Credentials API would and returns a presentation for whichever entry it can satisfy. A remote handler that does not invoke the Digital Credentials API:
 
 1. MUST consider the `requests[]` entries whose `protocol` and credential formats it implements, and among those, MUST attempt to satisfy each entry's `dcql_query` — including any `credential_sets` / `claim_sets` alternatives within it — against the credentials available to it, with Holder selection where applicable. Which entry is used is the *outcome* of this matching, not a prior choice; an entry is usable only if a held credential satisfies its query.
 2. For a satisfiable entry, MUST read the OpenID4VP request from its `data` — the claims of the signed request object for `openid4vp-v1-signed`, or the request parameters directly for `openid4vp-v1-unsigned` — and produce a presentation that satisfies that `dcql_query`, bound to its `nonce`. It honors `client_metadata` for accepted formats and any response-encryption key, and, for a signed request, binds the presentation's audience to the request's `client_id`.
@@ -826,11 +831,11 @@ An Agent receiving an HTTP response with a `PROOF-REQUIRED` proof requirement:
 1. MUST treat the response as a proof requirement.
 2. MUST extract the `PROOF-REQUIRED` field value and base64url-decode it as a UTF-8 JSON [[ref: x401 Payload]].
 3. MUST validate the decoded payload structure and process the `proof` object.
-4. MUST treat `presentation_requirements` as the Verifier-composed [[ref: Digital Credentials Request]] and MUST NOT modify any of its entries.
-5. MUST obtain a [[ref: Presentation Result]] for `presentation_requirements` by invoking it through a native credential method, relaying it to a Wallet or remote service, or acquiring a remotely generated result.
-6. MAY select among multiple `presentation_requirements.requests` entries by protocol or supported credential format when more than one is present.
-7. MAY use `trust_establishment`, when present, to filter candidate credentials or guide acquisition.
-8. MUST NOT treat any Agent-side interpretation of the Issuer Trust List as proof of verifier acceptance.
+4. MUST treat `credential_requirements` as the Verifier-composed credential request and MUST NOT modify any of its entries.
+5. MUST obtain a [[ref: Presentation Result]] for `credential_requirements` by invoking it through a native credential method, relaying it to a Wallet or remote service, or acquiring a remotely generated result.
+6. MAY select among multiple `credential_requirements.digital.requests` entries by protocol or supported credential format when more than one is present.
+7. MAY use the dereferenceable issuer pointers in the request's DCQL `trusted_authorities` (`openid_federation`, `etsi_tl`) to filter candidate credentials or guide acquisition; see [Credential Acquisition Guidance](#credential-acquisition-guidance).
+8. MUST NOT treat any Agent-side interpretation of the request's `trusted_authorities` as proof of verifier acceptance.
 9. MUST package the presentation result as a VP Artifact, inline or as a [[ref: Presentation Reference]].
 10. MUST retry the same route that produced the x401 proof requirement with one of:
     - a VP Artifact in a `PROOF-PRESENTATION` request header,
@@ -846,13 +851,13 @@ A Verifier implementing x401:
 1. MUST include `PROOF-REQUIRED: <base64url-x401-payload>` when proof is required or advertised.
 2. MUST include a valid base64url-encoded x401 payload in `PROOF-REQUIRED`.
 3. MUST use an HTTP status code appropriate for the overall response and MUST NOT rely on the status code alone to convey x401 proof state.
-4. MUST include a `presentation_requirements` whose entries are valid OpenID4VP requests for the DC API, using `openid4vp-v1-signed` (RECOMMENDED) or `openid4vp-v1-unsigned`.
+4. MUST include a `credential_requirements` whose `digital` member's entries are valid OpenID4VP requests for the DC API, using `openid4vp-v1-signed` (RECOMMENDED) or `openid4vp-v1-unsigned`.
 5. SHOULD use signed requests and set their `client_id` and `expected_origins`; when using unsigned requests, MUST account for the weaker binding described in [Verifier Binding](#verifier-binding).
 6. MUST include OAuth token exchange metadata in `oauth`.
-7. SHOULD provide `trust_establishment` when issuer approval policy is useful to disclose to Agents.
-8. MUST NOT enumerate verifier-approved issuers inline in the x401 payload.
+7. SHOULD express its accepted issuers as DCQL `trusted_authorities` inside the request, preferring dereferenceable types (`openid_federation`, `etsi_tl`) when it wants Agents to be able to discover acquisition paths.
+8. MUST NOT enumerate verifier-approved issuers inline as an x401-specific payload member.
 9. MUST validate presentations according to the proof validation rules in this specification and the credential format rules it relies upon, dereferencing a [[ref: Presentation Reference]] when one is supplied.
-10. MUST evaluate issuer trust, status, revocation, and policy constraints independently of any Agent-side interpretation of the Issuer Trust List.
+10. MUST evaluate issuer trust, status, revocation, and policy constraints independently of any Agent-side interpretation of the request's `trusted_authorities`.
 11. MUST accept a VP Artifact in a `PROOF-PRESENTATION` request header for protected-route retry, in both its inline and by-reference forms.
 12. MAY issue a Verification Token through the OAuth token endpoint after validating the presented VP Artifact.
 13. MUST validate Verification Tokens on protected-route retry according to token scope, audience, expiration, any Agent binding, and satisfied requirement metadata, whether the token arrives in `Authorization` or as an x401 Token Object in `PROOF-PRESENTATION`.
@@ -1046,20 +1051,21 @@ Decoded x401 payload, shown for readability:
 {
   "scheme": "x401",
   "version": "0.2.0",
-  "presentation_requirements": {
-    "requests": [
-      {
-        "protocol": "openid4vp-v1-signed",
-        "data": {
-          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+  "credential_requirements": {
+    "digital": {
+      "requests": [
+        {
+          "protocol": "openid4vp-v1-signed",
+          "data": {
+            "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+          }
         }
-      }
-    ]
+      ]
+    }
   },
   "oauth": {
     "token_endpoint": "https://bank.example.com/oauth/token"
   },
-  "trust_establishment": "https://bank.example.com/.well-known/x401/trust/financial-customer-v1",
   "request_id": "proof-template-financial-customer-v1",
   "satisfied_requirements": [
     "urn:example:x401:satisfaction:financial-customer:v1"
@@ -1067,7 +1073,7 @@ Decoded x401 payload, shown for readability:
 }
 ```
 
-The signed OpenID4VP request inside `presentation_requirements.requests[0].data.request`, decoded for readability, is authored and signed by the Verifier:
+The signed OpenID4VP request inside `credential_requirements.digital.requests[0].data.request`, decoded for readability, is authored and signed by the Verifier:
 
 ```json
 {
@@ -1102,7 +1108,7 @@ The signed OpenID4VP request inside `presentation_requirements.requests[0].data.
 The Agent invokes the Verifier-composed request directly through the Digital Credentials API, or relays it to a Wallet or remote service. The composed request is the `digital` member argument:
 
 ```js
-const result = await navigator.credentials.get({ digital: payload.presentation_requirements });
+const result = await navigator.credentials.get(payload.credential_requirements);
 // result => { protocol: "openid4vp-v1-signed", data: { /* presentation result bound to the Verifier */ } }
 ```
 
@@ -1211,7 +1217,7 @@ These mechanisms compose cleanly with x401 when they:
 1. produce an authenticated caller identifier the Verifier can map to the route's accepted Agent Identifier policy;
 2. bind that identifier to the HTTP request being evaluated, including the method, target URI or authority, freshness values, and relevant x401 retry material;
 3. can be verified before or during x401 proof validation;
-4. do not alter the composed request in `presentation_requirements`, the VP Artifact, or the `402 Payment Required` boundary;
+4. do not alter the composed request in `credential_requirements`, the VP Artifact, or the `402 Payment Required` boundary;
 5. allow the Verifier to reject mismatches between the authenticated caller, any VP Artifact `agent_id`, and any Verification Token holder identity.
 
 ### Agent Binding Options
@@ -1284,15 +1290,17 @@ On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof r
   "$schema": "https://x401.id/spec/schemas/request.json",
   "scheme": "x401",
   "version": "0.2.0",
-  "presentation_requirements": {
-    "requests": [
-      {
-        "protocol": "openid4vp-v1-signed",
-        "data": {
-          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+  "credential_requirements": {
+    "digital": {
+      "requests": [
+        {
+          "protocol": "openid4vp-v1-signed",
+          "data": {
+            "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+          }
         }
-      }
-    ]
+      ]
+    }
   },
   "oauth": {
     "token_endpoint": "https://bank.example.com/oauth/token"
@@ -1322,14 +1330,14 @@ The JSON Schema for the embedded request object is included in [Appendix C: x401
 ### Remote and Out-of-Band Fulfillment
 
 ::: note Informative
-This subsection describes, without adding new normative requirements, how the building blocks defined above let an Agent obtain a presentation when its own environment cannot invoke the Digital Credentials API — the common case for consumer AI clients. It uses only mechanisms already defined in this specification: the composed `presentation_requirements`, the [[ref: Presentation Reference]] form of the VP Artifact, and the existing retry. The community is invited to contribute concrete fulfillment and resume patterns.
+This subsection describes, without adding new normative requirements, how the building blocks defined above let an Agent obtain a presentation when its own environment cannot invoke the Digital Credentials API — the common case for consumer AI clients. It uses only mechanisms already defined in this specification: the composed `credential_requirements`, the [[ref: Presentation Reference]] form of the VP Artifact, and the existing retry. The community is invited to contribute concrete fulfillment and resume patterns.
 :::
 
 A consumer AI client may be unable to call `navigator.credentials.get()` itself. Because the composed request is signed and bound to the Verifier rather than to whoever invokes it, the request can be invoked somewhere else and the result returned to the Agent for replay. A common shape is:
 
-1. The Agent receives the x401 proof requirement and cannot invoke `presentation_requirements` directly.
+1. The Agent receives the x401 proof requirement and cannot invoke `credential_requirements` directly.
 2. The Agent surfaces a fulfillment URL — for example, a verifier-hosted page — to the user. Hosting the page on a verifier-controlled origin lets the page's origin match the `expected_origins` of a signed request; an unsigned request avoids the `expected_origins` constraint at the cost described in [Verifier Binding](#verifier-binding).
-3. The page invokes `navigator.credentials.get({ digital: request })` in its own browser context, on a real user activation, and obtains the presentation result.
+3. The page invokes `navigator.credentials.get(credentialRequirements)` in its own browser context, on a real user activation, and obtains the presentation result.
 4. The page makes the result available for the route retry — for example, by posting it to the Verifier, which holds it at a `presentation_uri`, or by returning a short-lived reference.
 5. The Agent resumes: it acquires the result or its reference and retries the protected route with a VP Artifact carrying the inline result or a [[ref: Presentation Reference]].
 
@@ -1365,7 +1373,7 @@ A `presentation_uri` is a capability-style reference: possession of the URL is e
 
 Acquisition hints MUST NOT be treated as sufficient trust material. Verifiers MUST apply their own trusted issuer policy and validation logic.
 
-When a x401 payload includes `trust_establishment`, that URL identifies the DIF Credential Trust Establishment document for the proof requirement. The document is an acquisition and discovery hint; it does not decide validity. Issuer constraints that must hold at presentation time belong in the request's DCQL `trusted_authorities`, and the Verifier MUST independently validate that presented credentials were issued by parties approved under that request and its own issuer policy. The Verifier MUST NOT rely on the Agent's interpretation of the Issuer Trust List.
+The issuer constraints that must hold at presentation time belong in the request's DCQL `trusted_authorities`. An Agent MAY follow the dereferenceable entries (`openid_federation`, `etsi_tl`) to discover where to acquire a qualifying credential, but that resolution is an acquisition and discovery aid; it does not decide validity. The Verifier MUST independently validate that presented credentials were issued by parties approved under the request it issued and its own issuer policy, and MUST NOT rely on the Agent's interpretation of `trusted_authorities`. Because an `aki` entry is not dereferenceable, a request constrained only by `aki` offers no acquisition path; this does not weaken enforcement, which depends on the constraint, not on its resolvability.
 
 ### Proof Presentation and Token Retry
 
@@ -1408,7 +1416,7 @@ A conforming x401 Verifier:
 - includes `PROOF-REQUIRED: <base64url-x401-payload>` when proof is required or advertised
 - treats the HTTP status code as the overall response status, not as the x401 protocol carrier
 - returns a valid base64url-encoded x401 payload in `PROOF-REQUIRED`
-- includes a composed Digital Credentials request at `presentation_requirements` whose every entry is a valid OpenID4VP request for the DC API, using `openid4vp-v1-signed` (RECOMMENDED) or `openid4vp-v1-unsigned`
+- includes a `credential_requirements` whose `digital` member carries a composed Digital Credentials request whose every entry is a valid OpenID4VP request for the DC API, using `openid4vp-v1-signed` (RECOMMENDED) or `openid4vp-v1-unsigned`
 - for signed requests, sets the `client_id` and `expected_origins` that make the Verifier the relying party; for unsigned requests, accounts for the weaker binding per [Verifier Binding](#verifier-binding)
 - includes an OAuth token endpoint for VP Artifact token exchange
 - validates presentations for the binding the request mode provides, credential query satisfaction, nonce freshness, issuer trust, status, revocation, and route policy
@@ -1416,25 +1424,31 @@ A conforming x401 Verifier:
 - accepts Verification Tokens as x401 Token Objects in `PROOF-PRESENTATION: <base64url-x401-token-object>` when x401 proof satisfaction is separate from existing application authorization
 - binds x401 Verification Tokens to the same caller context as any existing application authorization credential present on the request
 - returns `PROOF-RESPONSE: <base64url-x401-error-object>` when reporting x401 proof presentation or token errors
-- optionally includes a DIF Credential Trust Establishment URL for issuer trust and acquisition guidance
+- expresses accepted issuers as DCQL `trusted_authorities` inside the request, rather than as an x401-specific issuer list
 - keeps payment separate under `402 Payment Required`
 
 A conforming x401 Agent:
 
 - recognizes `PROOF-REQUIRED`
 - decodes and processes the x401 payload from the `PROOF-REQUIRED` field value
-- treats `presentation_requirements` as the Verifier-composed Digital Credentials request and does not modify it
-- obtains a presentation result for `presentation_requirements` by invoking it through a native credential method, relaying it to a Wallet or remote service, or acquiring a remotely generated result
+- treats `credential_requirements` as the Verifier-composed credential request and does not modify it
+- obtains a presentation result for `credential_requirements` by invoking it through a native credential method, relaying it to a Wallet or remote service, or acquiring a remotely generated result
 - packages the presentation result as a VP Artifact, inline or as a Presentation Reference
 - retries the same protected route that produced the x401 proof requirement with `PROOF-PRESENTATION` carrying a VP Artifact, `PROOF-PRESENTATION` carrying an x401 Token Object, or a deployment-defined upgraded `Authorization` token
 - preserves existing application `Authorization` credentials when carrying a separate x401 Verification Token as an x401 Token Object in `PROOF-PRESENTATION`
 - recognizes x401 Error Objects in `PROOF-RESPONSE` as x401 proof failures regardless of the HTTP status code
-- treats Issuer Trust List interpretation as advisory until the Verifier validates the presentation
+- treats its own interpretation of the request's `trusted_authorities` as advisory acquisition guidance until the Verifier validates the presentation
 - supports separate handling of `402 Payment Required`
 
 ## Open Questions & Future Additions
 
 The items below are questions intentionally left open at the time of the initial release of this specification. The community is invited to contribute concrete proposals, start discussions, provide examples, create interop profiles, add test vectors, and submit reference implementations so future versions of x401 can turn the right patterns into a robust protocol that accounts for all necessary concerns.
+
+### Additional Credential Request Types
+
+The `credential_requirements` member is a `CredentialRequestOptions` value — the argument to `navigator.credentials.get()` — so it is structurally able to carry request types beyond the Digital Credentials API, such as the `publicKey` member used for WebAuthn / passkey assertions or other `navigator.credentials.get()` members. This version of x401 intentionally specifies processing for the `digital` member only. The container was named and shaped to make this broadening additive rather than breaking: a future version can define a new member without renaming `credential_requirements` or restructuring the payload.
+
+What this version does **not** specify, and what future work should define, includes: how the [[ref: Presentation Result]], [[ref: VP Artifact]], and delivery in `PROOF-PRESENTATION` generalize to non-presentation results such as a WebAuthn assertion; how [Verifier Binding](#verifier-binding) is expressed for request types with their own binding model (for example WebAuthn's `rpId`, `challenge`, and origin in `clientDataJSON`); how the OAuth token exchange represents a non-VP proof as the subject token; and how a Verifier signs or otherwise authors each additional request type. Until a future version specifies a given member, a Verifier MUST NOT rely on it and an Agent MUST treat only the `digital` member as defined by this specification.
 
 ### Machine Payments and 402
 
@@ -1471,7 +1485,8 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [OpenID for Verifiable Presentations 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html), including its profile for use over the W3C Digital Credentials API
 - [OpenID for Verifiable Credential Issuance 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html)
 - [W3C Digital Credentials API](https://www.w3.org/TR/digital-credentials/)
-- [DIF Credential Trust Establishment 1.0](https://identity.foundation/credential-trust-establishment/)
+- [OpenID Federation 1.0](https://openid.net/specs/openid-federation-1_0.html)
+- [ETSI TS 119 612: Trusted Lists](https://www.etsi.org/deliver/etsi_ts/119600_119699/119612/)
 
 ### Informative
 
@@ -1494,15 +1509,17 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 {
   "scheme": "x401",
   "version": "0.2.0",
-  "presentation_requirements": {
-    "requests": [
-      {
-        "protocol": "openid4vp-v1-signed",
-        "data": {
-          "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+  "credential_requirements": {
+    "digital": {
+      "requests": [
+        {
+          "protocol": "openid4vp-v1-signed",
+          "data": {
+            "request": "eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ..."
+          }
         }
-      }
-    ]
+      ]
+    }
   },
   "oauth": {
     "token_endpoint": "https://bank.example.com/oauth/token"
@@ -1510,7 +1527,7 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 }
 ```
 
-The example uses the RECOMMENDED signed form; the OpenID4VP request inside `presentation_requirements` carries the credential query (`dcql_query`), the `nonce`, and — for a signed request — the `client_id` and `expected_origins`. The JSON object is carried in the `PROOF-REQUIRED` header as:
+The example uses the RECOMMENDED signed form; the OpenID4VP request inside `credential_requirements.digital` carries the credential query (`dcql_query`), the `nonce`, and — for a signed request — the `client_id` and `expected_origins`. The JSON object is carried in the `PROOF-REQUIRED` header as:
 
 ```http
 PROOF-REQUIRED: <base64url-minimal-x401-payload>
@@ -1522,7 +1539,7 @@ PROOF-REQUIRED: <base64url-minimal-x401-payload>
 x401 is best understood as:
 
 - an HTTP route proof requirement protocol
-- carrying a composed, Verifier-authored Digital Credentials request at `presentation_requirements` rather than a decomposed set of values for the Agent to assemble
+- carrying a composed, Verifier-authored Digital Credentials request at `credential_requirements.digital` rather than a decomposed set of values for the Agent to assemble
 - making the Verifier the relying party through a signed request (RECOMMENDED), bound via the request signature, `client_id`, and `expected_origins`, or allowing an unsigned request bound to the invoking origin and nonce when the invocation origin cannot be declared in advance
 - letting the Agent execute the request natively, relay it to a wallet or remote service, or acquire a remotely generated result and replay the route
 - reserving the top level of the payload, alongside the native request, for x401-specific values not yet expressible inside a native Digital Credentials request
@@ -1545,7 +1562,7 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
   "title": "x401 Proof Requirement Payload",
   "description": "Schema for an x401 proof requirement payload as defined by the x401 specification.",
   "type": "object",
-  "required": ["scheme", "version", "presentation_requirements", "oauth"],
+  "required": ["scheme", "version", "credential_requirements", "oauth"],
   "properties": {
     "$schema": {
       "type": "string",
@@ -1561,31 +1578,38 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
       "type": "string",
       "description": "The x401 payload version."
     },
-    "presentation_requirements": {
+    "credential_requirements": {
       "type": "object",
-      "required": ["requests"],
-      "description": "The composed Digital Credentials request (a DigitalCredentialRequestOptions value), usable as the digital member of navigator.credentials.get().",
+      "required": ["digital"],
+      "description": "The Verifier-composed credential request, a CredentialRequestOptions value usable as the argument to navigator.credentials.get(). This version of x401 specifies the digital member; additional navigator.credentials.get() request types (e.g. publicKey) may be specified in future versions.",
       "properties": {
-        "requests": {
-          "type": "array",
-          "minItems": 1,
-          "description": "Digital Credentials request entries. Every entry MUST be a valid OpenID4VP request for the DC API.",
-          "items": {
-            "type": "object",
-            "required": ["protocol", "data"],
-            "properties": {
-              "protocol": {
-                "type": "string",
-                "enum": ["openid4vp-v1-signed", "openid4vp-v1-unsigned"],
-                "description": "The DC API protocol identifier. openid4vp-v1-signed is RECOMMENDED; openid4vp-v1-unsigned is permitted. See Verifier Binding."
-              },
-              "data": {
+        "digital": {
+          "type": "object",
+          "required": ["requests"],
+          "description": "The composed Digital Credentials request, a DigitalCredentialRequestOptions value (the value the digital member of navigator.credentials.get() takes).",
+          "properties": {
+            "requests": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Digital Credentials request entries. Every entry MUST be a valid OpenID4VP request for the DC API.",
+              "items": {
                 "type": "object",
-                "description": "Protocol-specific request data. For openid4vp-v1-signed, an object carrying the signed OpenID4VP request (e.g. { \"request\": \"<JWT>\" }); for openid4vp-v1-unsigned, the OpenID4VP request parameters directly.",
+                "required": ["protocol", "data"],
                 "properties": {
-                  "request": {
+                  "protocol": {
                     "type": "string",
-                    "description": "The signed OpenID4VP request (a JWT-Secured Authorization Request); present for openid4vp-v1-signed."
+                    "enum": ["openid4vp-v1-signed", "openid4vp-v1-unsigned"],
+                    "description": "The DC API protocol identifier. openid4vp-v1-signed is RECOMMENDED; openid4vp-v1-unsigned is permitted. See Verifier Binding."
+                  },
+                  "data": {
+                    "type": "object",
+                    "description": "Protocol-specific request data. For openid4vp-v1-signed, an object carrying the signed OpenID4VP request (e.g. { \"request\": \"<JWT>\" }); for openid4vp-v1-unsigned, the OpenID4VP request parameters directly.",
+                    "properties": {
+                      "request": {
+                        "type": "string",
+                        "description": "The signed OpenID4VP request (a JWT-Secured Authorization Request); present for openid4vp-v1-signed."
+                      }
+                    }
                   }
                 }
               }
@@ -1614,11 +1638,6 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
         }
       },
       "additionalProperties": false
-    },
-    "trust_establishment": {
-      "type": "string",
-      "format": "uri",
-      "description": "Optional acquisition and discovery hint: HTTPS URL for a DIF Credential Trust Establishment document. Issuer enforcement is governed by the signed request (DCQL trusted_authorities), not by this member."
     },
     "request_id": {
       "type": "string",
