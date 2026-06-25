@@ -24,6 +24,8 @@ Contributors & Reviewers:
 ~ [Tobias Looker](https://www.linkedin.com/in/tplooker/) - [MATTR](https://mattr.global/)
 ~ [Gareth Oliver](https://www.linkedin.com/in/gareth-oliver-1231b481/) - [Google](https://google.com)
 ~ [Adam Lemmon](https://www.linkedin.com/in/adamjlemmon/) - [Proof](https://proof.com)
+~ [Tony England](https://www.linkedin.com/in/tony-england-a2898738/) - [Visa](https://visa.com)
+~ [Steven Sacia](https://www.linkedin.com/in/steven-sacia/) - [Visa](https://visa.com)
 
 Participate:
 ~ [GitHub repo](https://github.com/proof/x401)
