@@ -13,16 +13,13 @@ Editors:
 ~ [Daniel Buchner](https://www.linkedin.com/in/dbuchner) - [Proof](https://proof.com)
 ~ [Bhushit Agarwal](https://www.linkedin.com/in/bhushitagarwal/) - [Circle](https://circle.com)
 
-Contributors & Reviewers:
+Reviewers:
 ~ [Darren Louie](https://www.linkedin.com/in/darrenlouie) - [Proof](https://proof.com)
-~ [Lee Campbell](https://github.com/leecam) - [Google](https://google.com)
 ~ [Tim Cappalli](https://www.linkedin.com/in/timcappalli/) - [Okta](https://okta.com)
 ~ [Nick Steele](https://www.linkedin.com/in/nickelsteele/) - [OpenAI](https://openai.com)
-~ [Reema Bajwa](https://www.linkedin.com/in/reema-bajwa/) - [Google](https://google.com)
 ~ [Jacky Lao](https://www.linkedin.com/in/jackylao/) - [Lightspark](https://www.lightspark.com/)
 ~ [Oliver Terbu](https://www.linkedin.com/in/oliver-terbu/) - [MATTR](https://mattr.global/)
 ~ [Tobias Looker](https://www.linkedin.com/in/tplooker/) - [MATTR](https://mattr.global/)
-~ [Gareth Oliver](https://www.linkedin.com/in/gareth-oliver-1231b481/) - [Google](https://google.com)
 ~ [Adam Lemmon](https://www.linkedin.com/in/adamjlemmon/) - [Proof](https://proof.com)
 ~ [Tony England](https://www.linkedin.com/in/tony-england-a2898738/) - [Visa](https://visa.com)
 ~ [Steven Sacia](https://www.linkedin.com/in/steven-sacia/) - [Visa](https://visa.com)
