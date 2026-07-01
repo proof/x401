@@ -8,9 +8,9 @@ It fills a gap in HTTP. `401 Unauthorized` / `WWW-Authenticate` handle authentic
 
 x401 is a header protocol carried over three dedicated fields:
 
-- **`PROOF-REQUIRED`** — the Verifier advertises the proof requirement as a base64url-encoded JSON payload.
-- **`PROOF-PRESENTATION`** — the Agent returns the presentation result (inline or by reference) on retry.
-- **`PROOF-RESPONSE`** — the Verifier reports x401-specific results, including errors.
+- **`PROOF-REQUEST`** — the Verifier advertises the proof requirement as a base64url-encoded JSON payload.
+- **`PROOF-RESPONSE`** — the Agent returns the presentation result (inline or by reference) on retry.
+- **`PROOF-RESULT`** — the Verifier reports x401-specific results, including errors.
 
 The payload's core is a **composed, Verifier-authored [Digital Credentials API](https://www.w3.org/TR/digital-credentials/) request** (an [OpenID4VP](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html) request over the DC API) carried in its `presentation_requirements` member — usable directly as `navigator.credentials.get({ digital: payload.presentation_requirements })`. The request is normally **signed** (making the Verifier the relying party), so it can be:
 
@@ -22,9 +22,9 @@ The Agent then retries the original route with the presentation result. A typica
 
 ```
 Agent ──▶ GET /protected                      (no proof)
-Verifier ─▶ 401 + PROOF-REQUIRED: <payload>    (composed signed DC request)
+Verifier ─▶ 401 + PROOF-REQUEST: <payload>     (composed signed DC request)
 Agent ──▶ obtain a presentation for the request (native / relay / remote)
-Agent ──▶ GET /protected + PROOF-PRESENTATION: <result or reference>
+Agent ──▶ GET /protected + PROOF-RESPONSE: <result or reference>
 Verifier ─▶ 200 OK                             (proof validated)
 ```
 
