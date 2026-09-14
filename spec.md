@@ -59,7 +59,7 @@ x401 defines proof requirement semantics only. When payment is required, impleme
 
 ## Introduction
 
-HTTP provides a standard challenge mechanism for authentication via `401 Unauthorized` and `WWW-Authenticate`, but it does not define a general-purpose, machine-readable protocol for route-scoped proof requirements such as:
+HTTP has an established challenge model for authentication — a `401 Unauthorized` response carrying a `WWW-Authenticate` challenge — but that model is scoped to negotiating an authentication scheme and does not define a general-purpose, machine-readable protocol for route-scoped proof requirements such as:
 
 - proving personhood
 - proving country of residency
@@ -68,9 +68,11 @@ HTTP provides a standard challenge mechanism for authentication via `401 Unautho
 - proving organizational standing
 - proving workload identity attributes
 
+x401 does not extend or overload that model. It carries proof requirements in a dedicated `PROOF-REQUEST` header field and treats the response status code as independent of the proof requirement, so an x401 requirement can coexist with any existing `WWW-Authenticate`-based authentication on the same route; see [Status Code Independence](#status-code-independence).
+
 At the same time, OpenID4VP, DCQL, OAuth, OpenID4VCI, and the W3C Digital Credentials API define interoperable mechanisms for requesting presentations, evaluating credential requirements, invoking Credential Managers, issuing access tokens, and issuing credentials, but they are not themselves an HTTP route proof requirement protocol.
 
-x401 fills that gap by defining an HTTP-native wrapper that:
+x401 defines an HTTP-native wrapper that:
 
 - signals proof requirements at the protected route
 - carries x401 proof objects as base64url values in dedicated proof header fields
@@ -220,7 +222,7 @@ In the primary x401 flow, the [[ref: Agent]] is the HTTP caller and is assumed t
 2. The [[ref: Verifier]] determines that proof is required.
 3. The [[ref: Verifier]] returns an HTTP response with:
    - `PROOF-REQUEST: <base64url-x401-payload>`
-4. The [[ref: Agent]] decodes the x401 payload and reads the composed [[ref: Digital Credentials Request]] in the `digital` member of `credential_requirements` and the OAuth token endpoint.
+4. The [[ref: Agent]] decodes the x401 payload and reads the composed [[ref: Digital Credentials Request]] in the `digital` member of `credential_requirements`, along with the OAuth token endpoint when the payload carries one.
 5. The [[ref: Agent]] obtains a [[ref: Credential Result]] for `credential_requirements` without altering it, by one of:
    - invoking the request through a native credential method such as `navigator.credentials.get(payload.credential_requirements)`,
    - relaying the request to a Credential Manager or remote presentation service that can execute it, or
@@ -256,7 +258,7 @@ sequenceDiagram
 
 ### Optional OAuth Token Exchange
 
-An Agent MAY exchange a Result Artifact for a Verification Token before retrying the protected route. The token endpoint is supplied by the Verifier in the x401 payload.
+An Agent MAY exchange a Result Artifact for a Verification Token before retrying the protected route, when the Verifier has supplied a token endpoint in the x401 payload's OPTIONAL `oauth` member.
 
 ```mermaid
 sequenceDiagram
@@ -396,7 +398,7 @@ The payload SHOULD remain compact. Sensitive route state SHOULD be omitted, stor
 }
 ```
 
-The top level of the x401 payload is itself the envelope: the native, standard credential request is the `credential_requirements` member — a `CredentialRequestOptions` value whose `digital` member carries the Digital Credentials request — and the remaining x401-specific members, which are not yet expressible inside a native credential request, sit alongside it so the Agent and Verifier can polyfill their use.
+The top level of the x401 payload is itself the envelope: the native, standard credential request is the `credential_requirements` member — a `CredentialRequestOptions` value whose `digital` member carries the Digital Credentials request — and the remaining x401-specific members, which are not yet expressible inside a native credential request, are carried next to it so the Agent and Verifier can polyfill their use.
 
 #### Member Definitions
 
@@ -405,13 +407,13 @@ Name | Definition
 `scheme` | REQUIRED. Value MUST be the string `"x401"`.
 `version` | REQUIRED. The x401 payload version.
 `credential_requirements` | REQUIRED. The Verifier-composed credential request, a `CredentialRequestOptions` value. This version of x401 specifies its `digital` member, the composed [[ref: Digital Credentials Request]]. See [Credential Requirements](#credential-requirements).
-`oauth` | REQUIRED. OAuth token exchange metadata for obtaining a reusable Verification Token. See [OAuth Members](#oauth-members).
+`oauth` | OPTIONAL. OAuth token exchange metadata for obtaining a reusable Verification Token when the Verifier supports token exchange for the route. See [OAuth Members](#oauth-members).
 `request_id` | OPTIONAL. A stable verifier-defined identifier for the proof template, as an Agent-visible hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
 `satisfied_requirements` | OPTIONAL. Stable verifier-defined identifiers for the reusable proof requirements this proof would satisfy, as an Agent-visible reuse hint. See [Reusable Requirement Hints](#reusable-requirement-hints).
 `return_uri` | OPTIONAL. An `https` URL added by a relaying intermediary (never by the Verifier) telling a remote handler where to deliver the credential result. See [Relayed Delivery to a Remote Handler](#relayed-delivery-to-a-remote-handler).
 `payment` | OPTIONAL. Describes that payment is additionally required, without replacing `402` semantics.
 
-The credential requirement, the OpenID4VP `nonce`, and the request expiry all live inside the request in `credential_requirements.digital`; x401 does not duplicate them at the payload level. Of the payload-level members, only `credential_requirements` and `oauth` are load-bearing; `request_id` and `satisfied_requirements` are optional hints and optimizations. Issuer constraints and any acquisition pointers live inside the request, in its DCQL `trusted_authorities`, not at the payload level.
+The credential requirement, the OpenID4VP `nonce`, and the request expiry all live inside the request in `credential_requirements.digital`; x401 does not duplicate them at the payload level. Of the payload-level members, only `credential_requirements` is needed for the core flow; `oauth` is needed only for the optional token exchange leg, and `request_id` and `satisfied_requirements` are optional hints and optimizations. Issuer constraints and any acquisition pointers live inside the request, in its DCQL `trusted_authorities`, not at the payload level.
 
 ### Credential Requirements
 
@@ -488,6 +490,10 @@ Name | Definition
 `digital.requests[].data` | REQUIRED. The protocol-specific request data. For `openid4vp-v1-signed`, an object carrying the signed OpenID4VP request (a JWT-Secured Authorization Request); for `openid4vp-v1-unsigned`, the OpenID4VP request parameters directly.
 
 ### OAuth Members
+
+The `oauth` member is OPTIONAL, because the [token exchange leg](#access-token-acquisition) is itself optional. A Verifier that supports exchanging a Result Artifact for a [[ref: Verification Token]] on the route MUST include `oauth`; a Verifier that only accepts Result Artifacts on protected-route retry omits it. Its absence tells the Agent there is no token exchange to attempt for the route.
+
+When `oauth` is present, its members are:
 
 Name | Definition
 ---- | ----------
@@ -616,7 +622,7 @@ In every case the result is bound per the request's mode and transport — to th
 The composed request is authored and signed by the Verifier. The Agent treats it as opaque:
 
 1. The Agent MUST NOT modify any entry in `credential_requirements`. The request signature binds its contents, so any modification invalidates it.
-2. When `credential_requirements.digital.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Credential Manager or handler implements, and MAY pass the entries through unchanged; which entry is ultimately used is determined by the Credential Manager or handler matching the request against available credentials, not chosen up front by the Agent.
+2. When `credential_requirements.digital.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Credential Manager or handler implements, and MAY pass the entries through unchanged; which entry is used is determined by the Credential Manager or handler matching the request against available credentials, not chosen up front by the Agent.
 3. The Agent MUST arrange to acquire the [[ref: Credential Result]] returned for the request, whether it invokes the request itself, relays it, or acquires a remotely generated result.
 
 A Verifier composing `credential_requirements.digital`:
@@ -853,7 +859,7 @@ A Verifier implementing x401:
 3. MUST use an HTTP status code appropriate for the overall response and MUST NOT rely on the status code alone to convey x401 proof state.
 4. MUST include a `credential_requirements` whose `digital` member's entries are valid OpenID4VP requests for the DC API, using `openid4vp-v1-signed` (RECOMMENDED) or `openid4vp-v1-unsigned`.
 5. SHOULD use signed requests and set their `client_id` and `expected_origins`; when using unsigned requests, MUST account for the weaker binding described in [Verifier Binding](#verifier-binding).
-6. MUST include OAuth token exchange metadata in `oauth`.
+6. MUST include OAuth token exchange metadata in `oauth` when it supports token exchange for the route, and MUST omit `oauth` when it does not.
 7. SHOULD express its accepted issuers as DCQL `trusted_authorities` inside the request, preferring dereferenceable types (`openid_federation`, `etsi_tl`) when it wants Agents to be able to discover acquisition paths.
 8. MUST NOT enumerate verifier-approved issuers inline as an x401-specific payload member.
 9. MUST validate credential results according to the proof validation rules in this specification and the credential format rules it relies upon, dereferencing a [[ref: Credential Reference]] when one is supplied.
@@ -883,7 +889,7 @@ With a signed request the returned result is bound to the Verifier as relying pa
 
 ## Access Token Acquisition
 
-This optional leg of the protocol defines the optional exchange of a verified Result Artifact for a reusable Verification Token. The Agent submits the Result Artifact to the OAuth token endpoint from the x401 payload using OAuth 2.0 Token Exchange, then retries protected routes with the returned token either as the route's normal authorization credential or as an x401 proof-satisfaction token object in `PROOF-RESPONSE`.
+This optional leg of the protocol defines the exchange of a verified Result Artifact for a reusable Verification Token. It applies only when the x401 payload carries an `oauth` member; a payload without one offers no token exchange for the route. The Agent submits the Result Artifact to the OAuth token endpoint from the x401 payload using OAuth 2.0 Token Exchange, then retries protected routes with the returned token either as the route's normal authorization credential or as an x401 proof-satisfaction token object in `PROOF-RESPONSE`.
 
 ```http
 POST /oauth/token HTTP/1.1
@@ -897,7 +903,7 @@ subject_token=<base64url-result-artifact-json>
 
 ### OAuth Token Exchange
 
-An Agent MAY exchange a Result Artifact for a [[ref: Verification Token]] at the OAuth token endpoint supplied in `oauth.token_endpoint`.
+An Agent MAY exchange a Result Artifact for a [[ref: Verification Token]] at the OAuth token endpoint supplied in `oauth.token_endpoint`. When the payload has no `oauth` member, the Agent retries the protected route with the Result Artifact directly.
 
 The token request uses OAuth 2.0 Token Exchange. The Agent MUST use:
 
@@ -1228,7 +1234,7 @@ When an Agent relays the request to a separate Credential Manager, browser, devi
 
 ### Web Bot Auth and HTTP Message Signatures
 
-Web Bot Auth is a natural option for adding request-bound identification to x401. A calling Agent can sign the initial protected-route request, the retry request carrying a Result Artifact or Verification Token, and the OAuth token exchange request using HTTP Message Signatures. The Agent can also use the `Signature-Agent` header to point the Verifier to an HTTP Message Signatures key directory.
+Web Bot Auth is one option for adding request-bound identification to x401. A calling Agent can sign the initial protected-route request, the retry request carrying a Result Artifact or Verification Token, and the OAuth token exchange request using HTTP Message Signatures. The Agent can also use the `Signature-Agent` header to point the Verifier to an HTTP Message Signatures key directory.
 
 When layered over x401, a Web Bot Auth signature SHOULD cover the method and target, the authority or host, the `Signature-Agent` header when present, the `PROOF-RESPONSE` header when retrying with direct proof or proof-token material, the `Authorization` header when retrying with application or upgraded token material, and `Content-Digest` when the request has a body. The signature SHOULD include short-lived freshness metadata such as `created`, `expires`, and a replay-resistant `nonce`.
 
@@ -1264,7 +1270,7 @@ Delegation evidence composes best when it is scoped, time-limited, replay-resist
 The mechanism in this section is an early experiment in adapting x401 to consumer AI clients and other body-only consumers of HTTP responses. The core x401 protocol — as defined in the preceding sections — is the standard, straightforward way to convey proof requirements: a Verifier returns a `PROOF-REQUEST` header, and the Agent reads, decodes, and acts on it. The pattern described below is offered as a compatibility supplement for content-bearing responses where header-driven discovery is not viable, and the community is invited to contribute proposals, examples, and reference implementations that improve how x401 reaches these clients.
 :::
 
-x401 is fundamentally an HTTP header protocol. A conforming Verifier signals proof requirements through `PROOF-REQUEST`, and a conforming Agent processes that header. There is, however, a meaningful class of consumers that today cannot reliably access HTTP response headers on a successful (`2xx`) response with a body. A Verifier that wants its gating requirements to reach those consumers — most notably consumer-facing AI assistants — MAY emit a body-embedded form of the same x401 payload in addition to whatever it carries in `PROOF-REQUEST`.
+x401 is an HTTP header protocol. A conforming Verifier signals proof requirements through `PROOF-REQUEST`, and a conforming Agent processes that header. Some consumers, however, cannot reliably access HTTP response headers on a successful (`2xx`) response with a body. A Verifier that wants its gating requirements to reach those consumers — consumer-facing AI assistants in particular — MAY emit a body-embedded form of the same x401 payload in addition to whatever it carries in `PROOF-REQUEST`.
 
 ### Motivation
 
@@ -1418,7 +1424,7 @@ A conforming x401 Verifier:
 - returns a valid base64url-encoded x401 payload in `PROOF-REQUEST`
 - includes a `credential_requirements` whose `digital` member carries a composed Digital Credentials request whose every entry is a valid OpenID4VP request for the DC API, using `openid4vp-v1-signed` (RECOMMENDED) or `openid4vp-v1-unsigned`
 - for signed requests, sets the `client_id` and `expected_origins` that make the Verifier the relying party; for unsigned requests, accounts for the weaker binding per [Verifier Binding](#verifier-binding)
-- includes an OAuth token endpoint for Result Artifact token exchange
+- includes an OAuth token endpoint in `oauth` when it offers Result Artifact token exchange, and omits `oauth` when it does not
 - validates credential results for the binding the request mode provides, credential query satisfaction, nonce freshness, issuer trust, status, revocation, and route policy
 - accepts Result Artifacts in `PROOF-RESPONSE: <base64url-result-artifact-json>` in both inline and by-reference forms, dereferencing a Credential Reference when supplied
 - accepts Verification Tokens as x401 Token Objects in `PROOF-RESPONSE: <base64url-x401-token-object>` when x401 proof satisfaction is separate from existing application authorization
@@ -1442,7 +1448,7 @@ A conforming x401 Agent:
 
 ## Open Questions & Future Additions
 
-The items below are questions intentionally left open at the time of the initial release of this specification. The community is invited to contribute concrete proposals, start discussions, provide examples, create interop profiles, add test vectors, and submit reference implementations so future versions of x401 can turn the right patterns into a robust protocol that accounts for all necessary concerns.
+The items below are questions intentionally left open at the time of the initial release of this specification. The community is invited to contribute concrete proposals, start discussions, provide examples, create interop profiles, add test vectors, and submit reference implementations so that future versions of x401 can specify these areas.
 
 ### Additional Credential Request Types
 
@@ -1562,7 +1568,7 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
   "title": "x401 Proof Requirement Payload",
   "description": "Schema for an x401 proof requirement payload as defined by the x401 specification.",
   "type": "object",
-  "required": ["scheme", "version", "credential_requirements", "oauth"],
+  "required": ["scheme", "version", "credential_requirements"],
   "properties": {
     "$schema": {
       "type": "string",
@@ -1621,6 +1627,7 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
     "oauth": {
       "type": "object",
       "required": ["token_endpoint"],
+      "description": "Optional OAuth token exchange metadata. Present only when the Verifier supports exchanging a Result Artifact for a Verification Token on the route; its absence means no token exchange is offered.",
       "properties": {
         "token_endpoint": {
           "type": "string",
