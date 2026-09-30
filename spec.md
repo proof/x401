@@ -497,7 +497,7 @@ When `oauth` is present, its members are:
 
 Name | Definition
 ---- | ----------
-`token_endpoint` | OPTIONAL. OAuth 2.0 token endpoint where the Agent can exchange a Result Artifact for a Verification Token. When omitted, the Agent discovers the token endpoint as described in [OAuth Token Exchange](#oauth-token-exchange).
+`token_endpoint` | REQUIRED. OAuth 2.0 token endpoint where the Agent can exchange a Result Artifact for a Verification Token.
 `audience` | OPTIONAL. OAuth token exchange `audience` value the Agent should request.
 `resource` | OPTIONAL. OAuth token exchange `resource` value the Agent should request.
 
@@ -903,9 +903,7 @@ subject_token=<base64url-result-artifact-json>
 
 ### OAuth Token Exchange
 
-An Agent MAY exchange a Result Artifact for a [[ref: Verification Token]] at the Verifier's OAuth token endpoint. When the payload has no `oauth` member, the Agent retries the protected route with the Result Artifact directly.
-
-When `oauth.token_endpoint` is present, the Agent uses it. When it is absent, the Agent discovers the token endpoint through standard OAuth metadata: it obtains the protected resource's authorization server from OAuth 2.0 Protected Resource Metadata [RFC 9728], then reads that authorization server's `token_endpoint` from OAuth 2.0 Authorization Server Metadata [RFC 8414]. If discovery yields no token endpoint, the Agent retries the protected route with the Result Artifact directly.
+An Agent MAY exchange a Result Artifact for a [[ref: Verification Token]] at the OAuth token endpoint supplied in `oauth.token_endpoint`. When the payload has no `oauth` member, the Agent retries the protected route with the Result Artifact directly.
 
 The token request uses OAuth 2.0 Token Exchange. The Agent MUST use:
 
@@ -1490,7 +1488,6 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [RFC 8414: OAuth 2.0 Authorization Server Metadata](https://datatracker.ietf.org/doc/html/rfc8414)
 - [RFC 8693: OAuth 2.0 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693)
 - [RFC 9101: OAuth 2.0 JWT-Secured Authorization Request (JAR)](https://datatracker.ietf.org/doc/html/rfc9101)
-- [RFC 9728: OAuth 2.0 Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728)
 - [OpenID for Verifiable Presentations 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html), including its profile for use over the W3C Digital Credentials API
 - [OpenID for Verifiable Credential Issuance 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-final.html)
 - [W3C Digital Credentials API](https://www.w3.org/TR/digital-credentials/)
@@ -1629,12 +1626,13 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
     },
     "oauth": {
       "type": "object",
+      "required": ["token_endpoint"],
       "description": "Optional OAuth token exchange metadata. Present only when the Verifier supports exchanging a Result Artifact for a Verification Token on the route; its absence means no token exchange is offered.",
       "properties": {
         "token_endpoint": {
           "type": "string",
           "format": "uri",
-          "description": "Optional OAuth 2.0 token endpoint where the Agent can exchange a Result Artifact for a Verification Token. When omitted, the Agent discovers it via OAuth 2.0 Protected Resource Metadata (RFC 9728) and Authorization Server Metadata (RFC 8414)."
+          "description": "OAuth 2.0 token endpoint where the Agent can exchange a Result Artifact for a Verification Token."
         },
         "audience": {
           "type": "string",
