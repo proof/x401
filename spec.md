@@ -145,7 +145,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ A retry artifact carrying a [[ref: Credential Result]] — either inline or as a [[ref: Credential Reference]] — together with the x401 metadata the Verifier needs to correlate proof fulfillment, encoded for use in a `PROOF-RESPONSE` request header or OAuth token exchange.
 
 [[def: Credential Reference]]:
-~ A by-reference form of the [[ref: Result Artifact]] that carries a URL the Verifier dereferences to fetch a [[ref: Credential Result]] instead of carrying it inline, for results that exceed header size limits or are generated at a remote location.
+~ A by-reference form of the [[ref: Result Artifact]] that carries an Agent-supplied URL the Verifier dereferences to fetch a [[ref: Credential Result]] instead of carrying it inline, for results that exceed header size limits or are held at a remote location.
 
 [[def: Verification Token]]:
 ~ A verifier-issued, short-lived access token returned after successful proof verification and used by the [[ref: Agent]] on later protected-route requests so that the Result Artifact does not need to be repeated. A Verification Token can be used as the route's normal `Authorization` token when the deployment supports that model, or carried as an x401 Token Object in `PROOF-RESPONSE` when the route already uses `Authorization` for existing application authentication.
@@ -709,12 +709,12 @@ An inline Result Artifact carries the Digital Credentials API result `{ protocol
 }
 ```
 
-A by-reference Result Artifact carries a URL the Verifier dereferences to fetch the credential result, for results that exceed header size limits or are generated at a remote location:
+A by-reference Result Artifact carries an Agent-supplied URL the Verifier dereferences to fetch the credential result, for results that exceed header size limits or are held at a remote location:
 
 ```json
 {
   "request_id": "proof-template-financial-customer-v1",
-  "credential_result_uri": "https://bank.example.com/.well-known/x401/results/abc123",
+  "credential_result_uri": "https://agent.example/x401/results/abc123",
   "expires_at": "2026-05-06T18:50:00Z"
 }
 ```
@@ -724,8 +724,8 @@ A by-reference Result Artifact carries a URL the Verifier dereferences to fetch 
 Name | Definition
 ---- | ----------
 `credential_result` | REQUIRED unless `credential_result_uri` is present. The [[ref: Credential Result]] returned by the Credential Manager, as the `{ protocol, data }` object produced by the Digital Credentials API.
-`credential_result_uri` | REQUIRED unless `credential_result` is present. An HTTPS URL the Verifier dereferences with `GET` to fetch the [[ref: Credential Result]]. The Verifier MUST issue a unique `credential_result_uri` value for each result and MUST NOT reuse one across results. See [Result by Reference](#result-by-reference).
-`expires_at` | OPTIONAL. RFC 3339 time after which the `credential_result_uri` is no longer valid.
+`credential_result_uri` | REQUIRED unless `credential_result` is present. An HTTPS URL, supplied by the Agent, that the Verifier dereferences with `GET` to fetch the [[ref: Credential Result]]. The Agent MUST supply a unique `credential_result_uri` value for each result and MUST NOT reuse one across results. See [Result by Reference](#result-by-reference).
+`expires_at` | OPTIONAL. RFC 3339 time after which `credential_result_uri` is no longer served.
 `request_id` | OPTIONAL. The x401 `request_id`, when present.
 `agent_id` | OPTIONAL. An [[ref: Agent Identifier]] for the HTTP caller, when the deployment binds the Agent to the retry. See [Agent Binding Options](#agent-binding-options).
 
@@ -735,14 +735,14 @@ The Verifier MUST NOT treat the `request_id` or `agent_id` values inside the Res
 
 ### Result by Reference
 
-A credential result can be larger than an HTTP header field comfortably carries, and a remotely generated result may not be held by the Agent at all. For these cases the Result Artifact MAY carry a `credential_result_uri` instead of an inline `credential_result`. The Verifier dereferences the URL to obtain the same `{ protocol, data }` credential result it would otherwise have received inline.
+A credential result can be larger than an HTTP header field comfortably carries, and a remotely generated result may not be held by the Agent at all. For these cases the Result Artifact MAY carry a `credential_result_uri` instead of an inline `credential_result`. The Agent supplies the URL; the result is hosted by the Agent, by the relaying intermediary that received it at `return_uri`, or by the remote fulfillment surface that generated it. The Verifier dereferences the URL to obtain the same `{ protocol, data }` credential result it would otherwise have received inline.
 
 When a Result Artifact carries `credential_result_uri`:
 
 1. The `credential_result_uri` MUST be an `https` URL.
-2. The Verifier MUST issue a unique `credential_result_uri` for each result and MUST NOT reuse a URI value across results. Uniqueness per result is what lets the Verifier treat the reference as single-use and bind it to one retry.
-3. The Verifier fetches the credential result with an HTTP `GET` and processes it exactly as if it had been supplied inline as `credential_result`. The fetched result is self-authenticating — it is validated against the issued request's `nonce` and the binding its request mode provides, like any other — so a substituted or tampered result is rejected by normal proof validation without a separate integrity digest.
-4. The reference SHOULD be short-lived and scoped to the route and retry it serves.
+2. The Agent MUST supply a unique `credential_result_uri` for each result and MUST NOT reuse a URI value across results. The host SHOULD serve the result once and SHOULD stop serving it after `expires_at` or once the retry it serves completes. Uniqueness per result is what lets the Verifier treat the reference as single-use and bind it to one retry.
+3. The Verifier fetches the credential result with an HTTP `GET`, without following redirects, and processes it exactly as if it had been supplied inline as `credential_result`. The fetched result is self-authenticating — it is validated against the issued request's `nonce` and the binding its request mode provides, like any other — so a substituted or tampered result is rejected by normal proof validation without a separate integrity digest.
+4. The reference SHOULD be unguessable, short-lived, and scoped to the route and retry it serves.
 
 This same mechanism lets a remote fulfillment surface generate a result, publish it at a `credential_result_uri`, and let the Agent replay the protected route with only the reference. See [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment).
 
@@ -1145,7 +1145,7 @@ When the credential result is too large for a header field, or was generated at 
 ```json
 {
   "request_id": "proof-template-financial-customer-v1",
-  "credential_result_uri": "https://bank.example.com/.well-known/x401/results/abc123",
+  "credential_result_uri": "https://agent.example/x401/results/abc123",
   "expires_at": "2026-05-06T18:50:00Z"
 }
 ```
@@ -1344,7 +1344,7 @@ A consumer AI client may be unable to call `navigator.credentials.get()` itself.
 1. The Agent receives the x401 proof requirement and cannot invoke `credential_requirements` directly.
 2. The Agent surfaces a fulfillment URL — for example, a verifier-hosted page — to the user. Hosting the page on a verifier-controlled origin lets the page's origin match the `expected_origins` of a signed request; an unsigned request avoids the `expected_origins` constraint at the cost described in [Verifier Binding](#verifier-binding).
 3. The page invokes `navigator.credentials.get(credentialRequirements)` in its own browser context, on a real user activation, and obtains the credential result.
-4. The page makes the result available for the route retry — for example, by posting it to the Verifier, which holds it at a `credential_result_uri`, or by returning a short-lived reference.
+4. The page makes the result available for the route retry — for example, by returning it to the Agent, or by publishing it at a short-lived URL the Agent then supplies as `credential_result_uri`.
 5. The Agent resumes: it acquires the result or its reference and retries the protected route with a Result Artifact carrying the inline result or a [[ref: Credential Reference]].
 
 How the Agent learns that fulfillment is complete and acquires the result or reference — polling a status endpoint, a user-pasted completion code, or a continuation URL — is a deployment choice. None of these resume mechanisms change the wire format defined by this specification; they all converge on the same protected-route retry. Because the result is bound to the Verifier, the surface that invokes the request does not need to be the Agent, and the Agent does not need to read the result it relays.
@@ -1373,7 +1373,7 @@ Agent binding is OPTIONAL. The result is bound to the Verifier, not to the Agent
 
 ### Result by Reference
 
-A `credential_result_uri` is a capability-style reference: possession of the URL is enough to retrieve the result. The Verifier MUST issue a unique URI per result, and SHOULD make it `https`, unguessable, short-lived, single-use, and scoped to the route and retry it serves; the URL SHOULD be treated as sensitive because it can leak through logs, history, and intermediaries. Because the Verifier issues these references, it SHOULD dereference only URIs it recognizes as its own, which also guards against being pointed at arbitrary locations; it SHOULD bound the response size and time of the fetch. A reference that is reused, expired, or unrecognized MUST be rejected. Integrity and authenticity of the fetched bytes do not depend on a separate digest: the result is validated against the issued request's `nonce` and the binding its request mode provides, so a substituted or tampered result fails normal proof validation.
+A `credential_result_uri` is a capability-style reference: possession of the URL is enough to retrieve the result. The Agent MUST supply a unique URI per result, and the host SHOULD make it `https`, unguessable, short-lived, single-use, and scoped to the route and retry it serves; the URL SHOULD be treated as sensitive because it can leak through logs, history, and intermediaries. Because the Agent chooses the URL, the Verifier is fetching an Agent-chosen location: it MUST fetch only `https` URLs, SHOULD NOT follow redirects, SHOULD refuse hosts that resolve to loopback, private, or link-local addresses, and SHOULD bound the response size and time of the fetch. A reference that is reused, expired, or unreachable MUST be rejected. Integrity and authenticity of the fetched bytes do not depend on a separate digest or on the host: the result is validated against the issued request's `nonce` and the binding its request mode provides, so a substituted or tampered result fails normal proof validation.
 
 ### Issuer Trust
 
