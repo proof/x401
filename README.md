@@ -55,11 +55,13 @@ While editing, use the watch mode to regenerate on every save:
 npm run spec:dev
 ```
 
-To produce the full deployable site (adds the root redirect, `_headers`, and `_redirects`):
+To produce the full deployable site (adds the root redirect, `404.html`, `_headers`, and `_redirects`):
 
 ```sh
 npm run site:build
 ```
+
+The build renders `spec.md` to `www/spec/latest/` and copies that output to `www/spec/<version>/`, where `<version>` is the `version` in `package.json`, so the current version is reachable at its own URL. Earlier versions are rendered from their snapshot under `versions/<version>/` through the entries in `specs.json`. When you bump the version, snapshot the outgoing `spec.md` into `versions/<old-version>/spec.md` and add a `specs.json` entry for it.
 
 ## Contributing
 
