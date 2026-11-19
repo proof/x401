@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Examples use `403 Forbidden` instead of `401 Unauthorized`, because RFC 9110 requires a `WWW-Authenticate` challenge on every 401 and x401 defines none. The body-embedded `<data>` carrier is no longer described as limited to non-`401` responses.
+
+### Fixed
+
+- DCQL example: `type_values` for `jwt_vc_json` is an array of string arrays (`[["FinancialCustomerCredential"]]`).
+- Client Identifier Prefix examples use the OpenID4VP 1.0 names `decentralized_identifier:` and `openid_federation:` instead of `did:` and `https:`.
+
 ## [0.2.0]
 
 Reworks the proof requirement from a decomposed OpenID4VP request the Agent assembles into a composed, Verifier-authored Digital Credentials request the Agent executes, relays, or acquires remotely. This is a breaking change to the `proof` object and the VP Artifact.
