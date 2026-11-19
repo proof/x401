@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `credential_result_uri` is supplied by the Agent, not issued by the Verifier. The result may be hosted by the Agent, the relaying intermediary, or the remote fulfillment surface. The Verifier fetches an Agent-chosen `https` URL with redirect, address, size, and time bounds. `expires_at` now describes how long the host serves the URL.
+
+### Fixed
+
+- By-reference example URL no longer uses a `.well-known` path, which RFC 8615 reserves for registered names.
+
 ## [0.2.0]
 
 Reworks the proof requirement from a decomposed OpenID4VP request the Agent assembles into a composed, Verifier-authored Digital Credentials request the Agent executes, relays, or acquires remotely. This is a breaking change to the `proof` object and the VP Artifact.
