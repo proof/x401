@@ -32,6 +32,17 @@ A signed request binds the proof to the Verifier and is recommended; an **unsign
 
 The normative specification lives in **[`spec.md`](spec.md)** and is published at **<https://x401.id>**.
 
+## Platform notes for `PROOF-ORIGIN`
+
+The spec's `PROOF-ORIGIN` request header carries the Origin string the Agent's platform will present to the wallet when the Agent invokes the Digital Credentials API natively. The spec defines no platform syntax of its own. Known syntaxes at the time of writing:
+
+| Platform | Native-app DC API | Origin string the wallet binds to | Reference |
+| --- | --- | --- | --- |
+| Android | Yes, through Credential Manager, for OpenID4VP signed and unsigned requests | `android:apk-key-hash:<hash>`: SHA-256 of the app's signing certificate, standard base64, no padding. The wallet computes it from the calling app; a browser passes the page origin instead. | [Holder guide](https://developer.android.com/identity/digital-credentials/credential-holder/present-credentials), [Verifier guide](https://developer.android.com/identity/digital-credentials/credential-verifier), [Google Wallet verifier docs](https://developers.google.com/wallet/identity/verify/accepting-ids-from-wallet-online) |
+| iOS 26 | No. The DC API is available in Safari only, for the `org-iso-mdoc` protocol only. OpenID4VP protocol identifiers are not accepted, and a native app has no entry point to a third-party wallet. An iOS-based Agent uses remote or out-of-band fulfillment, or relayed delivery. | Web origin only (`requestingWebsiteOrigin` on the wallet side) | [WebKit Features in Safari 26.0](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/) |
+
+Note that the Android origin uses standard base64 without padding, while OpenID4VP `client_id` prefixes such as `x509_hash:` use base64url.
+
 ## Building the spec locally
 
 The spec is authored in [`spec.md`](spec.md) and rendered to HTML with [spec-up](https://github.com/decentralized-identity/spec-up).
