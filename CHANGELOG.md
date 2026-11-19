@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Aligned result binding with OpenID4VP over the Digital Credentials API: the audience of a result is the invoking Origin (`origin:<Origin>`) for signed and unsigned requests alike, and `client_id` authenticates the Verifier but is never the audience. Rewrote "Verifier Binding", "Handler Processing", "Proof Validation", and the token endpoint validation rules accordingly.
+- Relayed delivery to a remote handler now requires a signed request. The remote handler binds the result to one of the request's `expected_origins`, so a relayed result validates exactly like a native one. A remote handler no longer produces results for `openid4vp-v1-unsigned` entries. `expected_origins` is a MUST for a signed request, as OpenID4VP requires.
+- Response encryption follows `response_mode` on both paths: `dc_api.jwt` with a key in `client_metadata.jwks` encrypts natively and on the relayed path (the remote handler produces the JWE); a key under `response_mode: dc_api` encrypts nothing. The relaying intermediary never encrypts or decrypts.
+- `credential_result_uri` is supplied by the Agent, not issued by the Verifier. The result may be hosted by the Agent, the relaying intermediary, or the remote fulfillment surface. The Verifier fetches an Agent-chosen `https` URL with redirect, address, size, and time bounds. `expires_at` now describes how long the host serves the URL.
+- Examples use `403 Forbidden` instead of `401 Unauthorized`, because RFC 9110 requires a `WWW-Authenticate` challenge on every 401 and x401 defines none. The body-embedded `<data>` carrier is no longer described as limited to non-`401` responses.
+
+### Fixed
+
+- DCQL example: `type_values` for `jwt_vc_json` is an array of string arrays (`[["FinancialCustomerCredential"]]`).
+- Client Identifier Prefix examples use the OpenID4VP 1.0 names `decentralized_identifier:` and `openid_federation:` instead of `did:` and `https:`.
+- By-reference example URL no longer uses a `.well-known` path, which RFC 8615 reserves for registered names.
+- Site build renders a copy of the current spec at `/spec/<version>/` and serves a `404.html`, so a versioned URL such as `/spec/0.2.0` no longer falls into the root redirect loop.
+
 ## [0.2.0]
 
 Reworks the proof requirement from a decomposed OpenID4VP request the Agent assembles into a composed, Verifier-authored Digital Credentials request the Agent executes, relays, or acquires remotely. This is a breaking change to the `proof` object and the VP Artifact.
