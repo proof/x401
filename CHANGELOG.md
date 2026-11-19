@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `PROOF-ORIGIN`, an OPTIONAL Agent-to-Verifier hint header carrying the Origin string(s) the Agent will invoke the request from (a web origin, or a platform app identity such as Android's `android:apk-key-hash:<hash>`). A Verifier MAY use it to populate `expected_origins` of the signed requests it composes, so a native-app Agent whose Origin the Verifier cannot know in advance can still receive a signed, origin-bound request. The declaration is never a trust input. New "Declaring the Invocation Origin" subsection, "Origin Declaration" security subsection, `Vary: PROOF-ORIGIN` guidance, and a platform note (Android native apps supported; iOS 26 exposes the DC API in Safari only, for `org-iso-mdoc` only).
+- `PROOF-ORIGIN`, an OPTIONAL Agent-to-Verifier hint header carrying the Origin string(s) the Agent will invoke the request from (a web origin, or the app identity string the Agent's platform presents to the Credential Manager). A Verifier MAY use it to populate `expected_origins` of the signed requests it composes, so a native-app Agent whose Origin the Verifier cannot know in advance can still receive a signed, origin-bound request. The declaration is never a trust input. New "Declaring the Invocation Origin" subsection, "Origin Declaration" security subsection, and `Vary: PROOF-ORIGIN` guidance. Platform-specific Origin syntaxes are documented in the README, not in the spec.
 
 ### Changed
 

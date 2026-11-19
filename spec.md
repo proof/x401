@@ -640,7 +640,7 @@ The request's DCQL `trusted_authorities` can help Agents discover where to acqui
 
 ### Declaring the Invocation Origin
 
-A signed request binds the result to an Origin listed in `expected_origins`, so the Verifier has to know that Origin before it composes the request. For a browser-based Agent the Verifier knows its own origins, and the standard `Origin` request header tells it which page is calling. For a native-app Agent that invokes the request through a platform credential handler, the Origin is an app identity the platform computes — on Android, `android:apk-key-hash:<hash>` — which the Verifier cannot know in advance. The Agent knows it exactly. x401 therefore lets the Agent declare the Origin it will invoke the request from, so the Verifier can compose `expected_origins` for that Agent. The declaration is a composition hint and never a trust input: the platform, not the declaration, decides which Origin the Credential Manager binds the result to.
+A signed request binds the result to an Origin listed in `expected_origins`, so the Verifier has to know that Origin before it composes the request. For a browser-based Agent the Verifier knows its own origins, and the standard `Origin` request header tells it which page is calling. For a native-app Agent that invokes the request through a platform credential handler, the Origin is an app identity the platform computes from the app's identity, which the Verifier cannot know in advance. The Agent knows it exactly. x401 therefore lets the Agent declare the Origin it will invoke the request from, so the Verifier can compose `expected_origins` for that Agent. The declaration is a composition hint and never a trust input: the platform, not the declaration, decides which Origin the Credential Manager binds the result to.
 
 #### PROOF-ORIGIN Request Header
 
@@ -649,7 +649,7 @@ An Agent declares its invocation Origin with the `PROOF-ORIGIN` request header f
 ```http
 GET /accounts/applications HTTP/1.1
 Host: bank.example.com
-PROOF-ORIGIN: android:apk-key-hash:C1lkvgsLZ3BFIlZ0YXBJlVvB7sd6yLNDYKcyfEyBFWc
+PROOF-ORIGIN: <platform-app-identity>
 ```
 
 `PROOF-ORIGIN` is a hint header field, not a proof header field: its value is a comma-separated list of Origin strings, not a base64url-encoded object, and it MAY be split across field lines as RFC 9110 list syntax allows. Each entry is the exact string the Agent's platform presents to the Credential Manager as the Origin of the request:
@@ -657,8 +657,9 @@ PROOF-ORIGIN: android:apk-key-hash:C1lkvgsLZ3BFIlZ0YXBJlVvB7sd6yLNDYKcyfEyBFWc
 Invoker | Origin string | Who computes it
 ------- | ------------- | ---------------
 Web page in a browser | The ASCII serialization of the page origin, for example `https://app.example` (RFC 6454) | The browser
-Native Android app | `android:apk-key-hash:<hash>`, where `<hash>` is the SHA-256 digest of the app's signing certificate in standard base64 without padding | Credential Manager, from the calling app's signing certificate
-Other platforms | The Origin string that platform's Digital Credentials implementation presents to the Credential Manager | The platform
+Native app | The app identity string the platform's Digital Credentials implementation presents to the Credential Manager, in the platform's own syntax and encoding | The platform, from the calling app's identity (for example its signing certificate)
+
+The Agent copies the string byte for byte, in the syntax and encoding its platform defines; x401 does not define a platform app identity syntax of its own. The platform syntaxes known at the time of writing are listed in the repository README.
 
 An Agent that expects to invoke the request natively from an Origin the Verifier cannot know in advance SHOULD send `PROOF-ORIGIN` on the first protected-route request, so no extra round trip is needed. An Agent that first learns of the requirement from a `PROOF-REQUEST` whose signed entries list no Origin it can invoke from MAY repeat the request once with `PROOF-ORIGIN` and SHOULD NOT repeat it again for the same route if the next payload still lists no usable Origin. A browser-based Agent needs no `PROOF-ORIGIN` when the Verifier can read its page origin from the standard `Origin` request header.
 
@@ -667,14 +668,10 @@ An Agent that expects to invoke the request natively from an Origin the Verifier
 A Verifier that composes signed requests:
 
 1. MAY use the entries of `PROOF-ORIGIN` to populate `expected_origins` of the signed entries it composes for that response, together with any origins of its own, subject to its policy.
-2. MAY restrict the Origin strings it accepts, for example to `https` origins, to `android:apk-key-hash:` identities on an allowlist, or to any syntactically valid Origin. A Verifier that accepts any declared Origin still authenticates itself to the Credential Manager through the request signature and still binds the result to a named invoker; what it gives up is origin pre-authorization, as with relayed delivery (see [Verifier Binding](#verifier-binding)).
+2. MAY restrict the Origin strings it accepts, for example to `https` origins, to platform app identities on an allowlist, or to any syntactically valid Origin. A Verifier that accepts any declared Origin still authenticates itself to the Credential Manager through the request signature and still binds the result to a named invoker; what it gives up is origin pre-authorization, as with relayed delivery (see [Verifier Binding](#verifier-binding)).
 3. MUST NOT treat a declared Origin as authentication of the Agent, as proof that the Agent controls that Origin, or as an input to proof validation. The result is validated as always: its audience MUST be `origin:<Origin>` for an Origin in the `expected_origins` of the request the Verifier issued, and the `nonce` MUST match.
-4. MAY ignore `PROOF-ORIGIN` entirely and compose `expected_origins` from its own origins only, in which case a native-app Agent falls back to remote or out-of-band fulfillment or to relayed delivery.
+4. MAY ignore `PROOF-ORIGIN` entirely and compose `expected_origins` from its own origins only, in which case a native-app Agent falls back to remote or out-of-band fulfillment or to relayed delivery. A native-app Agent on a platform that offers no native entry point to the Digital Credentials API, or none for OpenID4VP, uses those same fallbacks.
 5. SHOULD send `Vary: PROOF-ORIGIN` on a response whose `PROOF-REQUEST` depends on the declared Origin, in addition to the cache controls in [Proof Result and Token Retry](#proof-result-and-token-retry).
-
-::: note Platform coverage at the time of writing
-Android exposes the Digital Credentials API to native apps through Credential Manager, and a wallet computes the calling app's Origin as `android:apk-key-hash:<hash>` from the app's signing certificate; browsers on Android pass the page origin. iOS 26 exposes the Digital Credentials API in Safari only, for the `org-iso-mdoc` protocol only, and provides no entry point for a native app to invoke a third-party wallet, so an iOS-based Agent cannot invoke an x401 request natively today and uses remote or out-of-band fulfillment (see [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment)) or relayed delivery instead. These are platform facts that will change; the header syntax carries whatever Origin string a platform defines.
-:::
 
 ### Relayed Delivery to a Remote Handler
 
@@ -1555,9 +1552,6 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [SPIFFE X.509-SVID](https://spiffe.io/docs/latest/spiffe-specs/x509-svid/)
 - [SPIFFE JWT-SVID](https://spiffe.io/docs/latest/spiffe-specs/jwt-svid/)
 - [Verifiable Intent Specification Overview](https://verifiableintent.dev/spec/)
-- [Android Credential Manager: Present credentials with your holder app](https://developer.android.com/identity/digital-credentials/credential-holder/present-credentials) (computes the `android:apk-key-hash:` Origin)
-- [Android Credential Manager: Verify digital credentials in your app](https://developer.android.com/identity/digital-credentials/credential-verifier)
-- [WebKit Features in Safari 26.0](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/) (Digital Credentials API on Apple platforms)
 
 ## Appendix A: Minimal Payload
 
