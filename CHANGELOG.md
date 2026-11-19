@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `PROOF-ORIGIN`, an OPTIONAL Agent-to-Verifier hint header carrying the Origin string(s) the Agent will invoke the request from (a web origin, or a platform app identity such as Android's `android:apk-key-hash:<hash>`). A Verifier MAY use it to populate `expected_origins` of the signed requests it composes, so a native-app Agent whose Origin the Verifier cannot know in advance can still receive a signed, origin-bound request. The declaration is never a trust input. New "Declaring the Invocation Origin" subsection, "Origin Declaration" security subsection, `Vary: PROOF-ORIGIN` guidance, and a platform note (Android native apps supported; iOS 26 exposes the DC API in Safari only, for `org-iso-mdoc` only).
+
 ### Changed
 
 - Aligned result binding with OpenID4VP over the Digital Credentials API: the audience of a result is the invoking Origin (`origin:<Origin>`) for signed and unsigned requests alike, and `client_id` authenticates the Verifier but is never the audience. Rewrote "Verifier Binding", "Handler Processing", "Proof Validation", and the token endpoint validation rules accordingly.

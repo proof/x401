@@ -378,6 +378,8 @@ A response SHOULD NOT contain both `PROOF-REQUEST` and `PROOF-RESULT` unless the
 
 When browser-based JavaScript needs to read `PROOF-REQUEST` or `PROOF-RESULT` from a cross-origin response, the response needs CORS exposure for those fields. When browser-based JavaScript sends `PROOF-RESPONSE` cross-origin, the server needs to allow the `PROOF-RESPONSE` request header through CORS preflight.
 
+x401 also defines one hint header field, `PROOF-ORIGIN` (Agent to Verifier), whose value is a comma-separated list of Origin strings rather than a base64url-encoded object. It lets an Agent declare the Origin it will invoke the request from; see [Declaring the Invocation Origin](#declaring-the-invocation-origin). The rules above for proof header fields do not apply to it.
+
 ### x401 Payload
 
 A x401 payload is a single JSON object encoded in the `PROOF-REQUEST` header field.
@@ -636,6 +638,44 @@ x401 does not restate the field-level rules for composing, signing, or invoking 
 
 The request's DCQL `trusted_authorities` can help Agents discover where to acquire acceptable credentials, but they never delegate verification behavior to the Agent, and discovery does not decide validity — the request's `dcql_query` and `trusted_authorities` do, as enforced by the Verifier. When a `trusted_authorities` entry resolves to OpenID4VCI issuers, Agents resolve those issuers using OpenID4VCI issuer metadata discovery; see [Credential Acquisition Guidance](#credential-acquisition-guidance).
 
+### Declaring the Invocation Origin
+
+A signed request binds the result to an Origin listed in `expected_origins`, so the Verifier has to know that Origin before it composes the request. For a browser-based Agent the Verifier knows its own origins, and the standard `Origin` request header tells it which page is calling. For a native-app Agent that invokes the request through a platform credential handler, the Origin is an app identity the platform computes — on Android, `android:apk-key-hash:<hash>` — which the Verifier cannot know in advance. The Agent knows it exactly. x401 therefore lets the Agent declare the Origin it will invoke the request from, so the Verifier can compose `expected_origins` for that Agent. The declaration is a composition hint and never a trust input: the platform, not the declaration, decides which Origin the Credential Manager binds the result to.
+
+#### PROOF-ORIGIN Request Header
+
+An Agent declares its invocation Origin with the `PROOF-ORIGIN` request header field on the protected-route request:
+
+```http
+GET /accounts/applications HTTP/1.1
+Host: bank.example.com
+PROOF-ORIGIN: android:apk-key-hash:C1lkvgsLZ3BFIlZ0YXBJlVvB7sd6yLNDYKcyfEyBFWc
+```
+
+`PROOF-ORIGIN` is a hint header field, not a proof header field: its value is a comma-separated list of Origin strings, not a base64url-encoded object, and it MAY be split across field lines as RFC 9110 list syntax allows. Each entry is the exact string the Agent's platform presents to the Credential Manager as the Origin of the request:
+
+Invoker | Origin string | Who computes it
+------- | ------------- | ---------------
+Web page in a browser | The ASCII serialization of the page origin, for example `https://app.example` (RFC 6454) | The browser
+Native Android app | `android:apk-key-hash:<hash>`, where `<hash>` is the SHA-256 digest of the app's signing certificate in standard base64 without padding | Credential Manager, from the calling app's signing certificate
+Other platforms | The Origin string that platform's Digital Credentials implementation presents to the Credential Manager | The platform
+
+An Agent that expects to invoke the request natively from an Origin the Verifier cannot know in advance SHOULD send `PROOF-ORIGIN` on the first protected-route request, so no extra round trip is needed. An Agent that first learns of the requirement from a `PROOF-REQUEST` whose signed entries list no Origin it can invoke from MAY repeat the request once with `PROOF-ORIGIN` and SHOULD NOT repeat it again for the same route if the next payload still lists no usable Origin. A browser-based Agent needs no `PROOF-ORIGIN` when the Verifier can read its page origin from the standard `Origin` request header.
+
+#### Verifier Use of a Declared Origin
+
+A Verifier that composes signed requests:
+
+1. MAY use the entries of `PROOF-ORIGIN` to populate `expected_origins` of the signed entries it composes for that response, together with any origins of its own, subject to its policy.
+2. MAY restrict the Origin strings it accepts, for example to `https` origins, to `android:apk-key-hash:` identities on an allowlist, or to any syntactically valid Origin. A Verifier that accepts any declared Origin still authenticates itself to the Credential Manager through the request signature and still binds the result to a named invoker; what it gives up is origin pre-authorization, as with relayed delivery (see [Verifier Binding](#verifier-binding)).
+3. MUST NOT treat a declared Origin as authentication of the Agent, as proof that the Agent controls that Origin, or as an input to proof validation. The result is validated as always: its audience MUST be `origin:<Origin>` for an Origin in the `expected_origins` of the request the Verifier issued, and the `nonce` MUST match.
+4. MAY ignore `PROOF-ORIGIN` entirely and compose `expected_origins` from its own origins only, in which case a native-app Agent falls back to remote or out-of-band fulfillment or to relayed delivery.
+5. SHOULD send `Vary: PROOF-ORIGIN` on a response whose `PROOF-REQUEST` depends on the declared Origin, in addition to the cache controls in [Proof Result and Token Retry](#proof-result-and-token-retry).
+
+::: note Platform coverage at the time of writing
+Android exposes the Digital Credentials API to native apps through Credential Manager, and a wallet computes the calling app's Origin as `android:apk-key-hash:<hash>` from the app's signing certificate; browsers on Android pass the page origin. iOS 26 exposes the Digital Credentials API in Safari only, for the `org-iso-mdoc` protocol only, and provides no entry point for a native app to invoke a third-party wallet, so an iOS-based Agent cannot invoke an x401 request natively today and uses remote or out-of-band fulfillment (see [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment)) or relayed delivery instead. These are platform facts that will change; the header syntax carries whatever Origin string a platform defines.
+:::
+
 ### Relayed Delivery to a Remote Handler
 
 Native invocation returns the result through the `navigator.credentials.get()` call, so it needs no return channel. When an intermediary — for example, an MCP tool or other Agent — instead hands the request to a **remote handler** (a remote Credential Manager or service that produces the result without invoking the Digital Credentials API itself), two things must be supplied that the Verifier cannot know: where the result is returned, and how a non-DC-API handler is expected to process a Digital Credentials request. The intermediary forwards the request unchanged and adds only the return channel.
@@ -849,6 +889,7 @@ An Agent receiving an HTTP response with a `PROOF-REQUEST` proof requirement:
     - a Verification Token in the route's normal `Authorization` request header when the deployment specifies that the token is an upgraded or replacement application authorization credential.
 11. MUST NOT replace an existing application `Authorization` credential with an x401 Verification Token unless the deployment explicitly defines the returned token as valid for that route's ordinary authorization processing.
 12. MUST treat a `PROOF-RESULT` carrying an x401 Error Object as an x401 proof failure for the route-scoped proof attempt, regardless of the HTTP status code.
+13. MAY declare the Origin it will invoke the request from with the `PROOF-ORIGIN` request header, and SHOULD do so on the first request when it will invoke natively from an Origin the Verifier cannot know in advance; see [Declaring the Invocation Origin](#declaring-the-invocation-origin).
 
 ### Verifier Processing Rules
 
@@ -870,6 +911,7 @@ A Verifier implementing x401:
 14. MUST bind any Verification Token carried in `PROOF-RESPONSE` to the existing application caller, credential, client, key, or Agent Identifier required by the protected route when an `Authorization` header is also present.
 15. SHOULD return `PROOF-RESULT: <base64url-x401-error-object>` if proof is presented but policy satisfaction fails or the result or token cannot be processed.
 16. MUST use `402 Payment Required` separately if payment is required and remains unsatisfied.
+17. MAY use a `PROOF-ORIGIN` request header to populate `expected_origins` of the signed requests it composes, and MUST NOT treat the declared Origin as authentication of the Agent or as an input to proof validation; see [Declaring the Invocation Origin](#declaring-the-invocation-origin).
 
 ### Proof Validation
 
@@ -1342,7 +1384,7 @@ This subsection describes, without adding new normative requirements, how the bu
 A consumer AI client may be unable to call `navigator.credentials.get()` itself. Because the composed request is signed and bound to the Verifier rather than to whoever invokes it, the request can be invoked somewhere else and the result returned to the Agent for replay. A common shape is:
 
 1. The Agent receives the x401 proof requirement and cannot invoke `credential_requirements` directly.
-2. The Agent surfaces a fulfillment URL — for example, a verifier-hosted page — to the user. Hosting the page on a verifier-controlled origin lets the page's origin match the `expected_origins` of a signed request; an unsigned request avoids the `expected_origins` constraint at the cost described in [Verifier Binding](#verifier-binding).
+2. The Agent surfaces a fulfillment URL — for example, a verifier-hosted page — to the user. Hosting the page on a verifier-controlled origin lets the page's origin match the `expected_origins` of a signed request; an unsigned request avoids the `expected_origins` constraint at the cost described in [Verifier Binding](#verifier-binding). An Agent that can invoke the request natively from its own app Origin instead declares that Origin up front (see [Declaring the Invocation Origin](#declaring-the-invocation-origin)) and needs no fulfillment page.
 3. The page invokes `navigator.credentials.get(credentialRequirements)` in its own browser context, on a real user activation, and obtains the credential result.
 4. The page makes the result available for the route retry — for example, by returning it to the Agent, or by publishing it at a short-lived URL the Agent then supplies as `credential_result_uri`.
 5. The Agent resumes: it acquires the result or its reference and retries the protected route with a Result Artifact carrying the inline result or a [[ref: Credential Reference]].
@@ -1359,7 +1401,7 @@ The freshness and replay properties of a result derive from the OpenID4VP `nonce
 
 x401 binds a result to the Verifier in one of two ways, depending on the request mode the Verifier chose.
 
-**Signed requests (`openid4vp-v1-signed`, RECOMMENDED).** The request signature and `client_id` let the Credential Manager authenticate the Verifier, and `expected_origins` lets the Verifier pre-authorize the origin(s) from which the request may be invoked. The result's audience is the invoking Origin (`origin:<Origin>`), as OpenID4VP over the DC API specifies for signed and unsigned requests alike; `client_id` is never the audience. The Verifier therefore accepts a result only when its audience is one of the Origins it declared. This resists relay and phishing: a Credential Manager will not produce a result for the Verifier's request unless it is invoked from an origin the Verifier authorized, so an attacker cannot harvest a result for the Verifier from an arbitrary origin. The cost is that the Verifier must know the invocation origin in advance — which is why, when the Agent's own origin is not known, the request is invoked from a verifier-controlled fulfillment origin (see [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment)).
+**Signed requests (`openid4vp-v1-signed`, RECOMMENDED).** The request signature and `client_id` let the Credential Manager authenticate the Verifier, and `expected_origins` lets the Verifier pre-authorize the origin(s) from which the request may be invoked. The result's audience is the invoking Origin (`origin:<Origin>`), as OpenID4VP over the DC API specifies for signed and unsigned requests alike; `client_id` is never the audience. The Verifier therefore accepts a result only when its audience is one of the Origins it declared. This resists relay and phishing: a Credential Manager will not produce a result for the Verifier's request unless it is invoked from an origin the Verifier authorized, so an attacker cannot harvest a result for the Verifier from an arbitrary origin. The cost is that the Verifier must know the invocation origin in advance — which is why, when the Agent's own origin is not known, the request is invoked from a verifier-controlled fulfillment origin (see [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment)), or the Agent declares its Origin before the Verifier composes the request (see [Declaring the Invocation Origin](#declaring-the-invocation-origin)). A Verifier that lists an Agent-declared Origin keeps Verifier authentication and binds the result to that named invoker, but it has not pre-authorized that Origin by its own policy unless it allowlists it.
 
 **Unsigned requests (`openid4vp-v1-unsigned`).** There is no signature and no `client_id`; the Credential Manager uses the invoking origin as the relying-party identity and binds the result to that origin and the Verifier's `nonce`. This lets the request be fulfilled at an origin the Verifier did not declare — the case signed requests cannot serve — at a real cost: the Credential Manager cannot authenticate the Verifier, and the Verifier cannot pre-authorize the invocation origin. A malicious page or relay that obtains the request can invoke it from its own origin in front of a different holder and relay the result back, so a Verifier that accepts an unsigned result on the strength of the `nonce` alone is exposed to credential harvesting and relay. A Verifier that uses unsigned requests therefore relies on the freshness and uniqueness of its `nonce` for replay protection and SHOULD compensate for the missing origin pre-authorization — for example by binding the proof to an authenticated Agent (see [Agent Binding Options](#agent-binding-options)), by constraining the observed invocation origin, or by trusting the delivery channel.
 
@@ -1370,6 +1412,10 @@ In all modes the Verifier MUST validate the binding its request mode and transpo
 ### Agent Binding
 
 Agent binding is OPTIONAL. The result is bound to the Verifier, not to the Agent, so a deployment that does not bind the Agent still has a result it can trust. A deployment that additionally wants to tie the proof and retry to a specific Agent layers an HTTP-layer or token-layer caller authentication over x401; see [Agent Binding Options](#agent-binding-options). When a deployment binds the Agent, it MUST reject a retry whose caller cannot be bound to the required [[ref: Agent Identifier]]. Because the surface that invokes the request may differ from the Agent that retries the route, a binding mechanism that depends only on the credential result is insufficient in relay and remote-fulfillment topologies.
+
+### Origin Declaration
+
+`PROOF-ORIGIN` is an unauthenticated hint. An Agent can declare any Origin string, and a Verifier that lists it in `expected_origins` has pre-authorized nothing by its own policy. What protects the Verifier is that the declaration does not change which Origin the Credential Manager binds the result to: the platform computes the Origin from the invoking page or app, so a false declaration yields either a result bound to a different Origin, which fails validation, or no result at all. A Verifier that wants origin pre-authorization in the native-app case allowlists the app identities it accepts and rejects declarations outside that list. A Verifier that accepts any declared Origin SHOULD treat the Origin recorded in the result as the identity of the invoking app for logging, rate limiting, and later policy, and SHOULD compensate for the missing pre-authorization as it would for relayed delivery (see [Verifier Binding](#verifier-binding)). A declared Origin is also observable by intermediaries and reveals which app the Agent is; an Agent that considers that sensitive declares it only on routes it expects to be x401-gated.
 
 ### Result by Reference
 
@@ -1385,7 +1431,7 @@ The issuer constraints that must hold at proof time belong in the request's DCQL
 
 Verifiers SHOULD prefer Verification Token retry in multi-step flows to avoid repeatedly transmitting large Result Artifacts. Verifiers that accept direct Result Artifact retry SHOULD consider header size limits and SHOULD use compact or referenced proof formats where possible.
 
-Responses carrying fresh `PROOF-REQUEST` challenge material or `PROOF-RESULT` diagnostics SHOULD use `Cache-Control: no-store` unless the deployment has explicitly made the x401 payload safe to cache. Responses whose selected representation varies based on a `PROOF-RESPONSE` request header SHOULD use `Vary: PROOF-RESPONSE` or stronger cache controls.
+Responses carrying fresh `PROOF-REQUEST` challenge material or `PROOF-RESULT` diagnostics SHOULD use `Cache-Control: no-store` unless the deployment has explicitly made the x401 payload safe to cache. Responses whose selected representation varies based on a `PROOF-RESPONSE` request header SHOULD use `Vary: PROOF-RESPONSE` or stronger cache controls, and responses whose `PROOF-REQUEST` depends on a `PROOF-ORIGIN` request header SHOULD use `Vary: PROOF-ORIGIN`.
 
 The x401 payload is visible to the Agent and to intermediaries that can observe decrypted HTTP traffic. A Verifier that encodes state in the request `nonce` to operate statelessly SHOULD protect that state with a signature, MAC, or authenticated encryption so it cannot be forged or read.
 
@@ -1432,6 +1478,7 @@ A conforming x401 Verifier:
 - returns `PROOF-RESULT: <base64url-x401-error-object>` when reporting x401 proof or token errors
 - expresses accepted issuers as DCQL `trusted_authorities` inside the request, rather than as an x401-specific issuer list
 - keeps payment separate under `402 Payment Required`
+- when it honors `PROOF-ORIGIN`, uses the declared Origin only to populate `expected_origins` and never as authentication or as a proof validation input
 
 A conforming x401 Agent:
 
@@ -1482,6 +1529,7 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [RFC 2119: Key words for use in RFCs to Indicate Requirement Levels](https://datatracker.ietf.org/doc/html/rfc2119)
 - [RFC 8174: Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words](https://datatracker.ietf.org/doc/html/rfc8174)
 - [RFC 4648: The Base16, Base32, and Base64 Data Encodings](https://datatracker.ietf.org/doc/html/rfc4648)
+- [RFC 6454: The Web Origin Concept](https://datatracker.ietf.org/doc/html/rfc6454)
 - [RFC 6749: The OAuth 2.0 Authorization Framework](https://datatracker.ietf.org/doc/html/rfc6749)
 - [RFC 6750: The OAuth 2.0 Authorization Framework: Bearer Token Usage](https://datatracker.ietf.org/doc/html/rfc6750)
 - [RFC 7519: JSON Web Token](https://datatracker.ietf.org/doc/html/rfc7519)
@@ -1507,6 +1555,9 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [SPIFFE X.509-SVID](https://spiffe.io/docs/latest/spiffe-specs/x509-svid/)
 - [SPIFFE JWT-SVID](https://spiffe.io/docs/latest/spiffe-specs/jwt-svid/)
 - [Verifiable Intent Specification Overview](https://verifiableintent.dev/spec/)
+- [Android Credential Manager: Present credentials with your holder app](https://developer.android.com/identity/digital-credentials/credential-holder/present-credentials) (computes the `android:apk-key-hash:` Origin)
+- [Android Credential Manager: Verify digital credentials in your app](https://developer.android.com/identity/digital-credentials/credential-verifier)
+- [WebKit Features in Safari 26.0](https://webkit.org/blog/17333/webkit-features-in-safari-26-0/) (Digital Credentials API on Apple platforms)
 
 ## Appendix A: Minimal Payload
 
