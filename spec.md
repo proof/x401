@@ -142,7 +142,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ The result a Credential Manager returns for a [[ref: Digital Credentials Request]], shaped as `{ "protocol": ..., "data": ... }` as returned by the Digital Credentials API.
 
 [[def: Result Artifact]]:
-~ A retry artifact carrying a [[ref: Credential Result]] — either inline or as a [[ref: Credential Reference]] — together with the x401 metadata the Verifier needs to correlate proof fulfillment, encoded for use in a `PROOF-RESPONSE` request header or OAuth token exchange.
+~ A retry artifact carrying a [[ref: Credential Result]] — inline or by reference — together with the x401 metadata the Verifier needs to correlate proof fulfillment, encoded for use in a `PROOF-RESPONSE` request header or OAuth token exchange.
 
 [[def: Credential Reference]]:
 ~ A by-reference form of the [[ref: Result Artifact]] that carries a URL the Verifier dereferences to fetch a [[ref: Credential Result]] instead of carrying it inline, for results that exceed header size limits or are generated at a remote location.
@@ -193,7 +193,7 @@ After obtaining a credential result, the Agent packages it as a Result Artifact 
   "request_id": "proof-template-financial-customer-v1",
   "credential_result": {
     "protocol": "openid4vp-v1-signed",
-    "data": "<credential-manager-returned-result>"
+    "data": { "vp_token": { "financial_customer": ["<presentation>"] } }
   }
 }
 ```
@@ -295,7 +295,7 @@ Cache-Control: no-store
 
 ### HTTP Semantics
 
-HTTP status or condition | Meaning in a x401-capable deployment | Agent expectation
+HTTP status or condition | Meaning in an x401-capable deployment | Agent expectation
 ------------------------ | ------------------------------------ | ----------------
 Any response with `PROOF-REQUEST` | Proof is required, advertised, or not yet satisfied for the route | Decode the x401 payload from the `PROOF-REQUEST` field value
 Any response with `PROOF-RESULT` containing an x401 Error Object | A presented x401 proof failed or could not be processed | Decode the x401 error object and treat the x401 proof branch as failed
@@ -327,7 +327,7 @@ This specification does not carry x401 proof requirements in `WWW-Authenticate`.
 
 A server that requires payment MUST use `402 Payment Required` and MUST NOT overload x401 to represent payment as proof.
 
-Payment metadata MAY be declared in a x401 payload for informational purposes when payment may also be required, but payment satisfaction itself remains governed by the payment protocol used with `402`.
+Payment metadata MAY be declared in an x401 payload for informational purposes when payment may also be required, but payment satisfaction itself remains governed by the payment protocol used with `402`.
 
 #### x401 Error for Failed Policy Satisfaction
 
@@ -370,17 +370,17 @@ The encoded value MUST be base64url-encoded UTF-8 JSON using the URL and filenam
 
 When `PROOF-RESPONSE` carries a Result Artifact, the request is presenting a credential result directly. When it carries an x401 Token Object, the request is presenting a reusable proof-satisfaction token issued after prior verification.
 
-`PROOF-RESULT` is the Verifier-to-Agent response information channel for x401-specific results and diagnostics. This specification defines the x401 Error Object for failed proof or token processing. Deployments MAY define additional response objects for accepted proof state, token metadata, or other x401-specific return information.
+`PROOF-RESULT` is the Verifier-to-Agent response information channel for x401-specific results and diagnostics. This specification defines the x401 Error Object for failed proof or token processing. Deployments MAY define additional response objects for accepted proof state, token metadata, or other x401-specific return information. A deployment-defined `PROOF-RESULT` object MUST NOT carry an `error` member; a recipient MUST treat a `PROOF-RESULT` object that carries an `error` member as an x401 Error Object.
 
 A sender MUST NOT generate more than one field line with the same x401 proof header name in the same HTTP message. A sender MUST NOT combine multiple x401 protocol objects in a single proof header using commas or other list syntax. If a recipient receives multiple field lines for the same proof header, or receives a proof header value containing a comma-separated list of messages, it MUST treat that proof header as invalid.
 
-A response SHOULD NOT contain both `PROOF-REQUEST` and `PROOF-RESULT` unless the response both reports verifier response information and intentionally advertises a fresh proof requirement for a subsequent attempt. A request SHOULD NOT contain more than one `PROOF-RESPONSE` value.
+A response SHOULD NOT contain both `PROOF-REQUEST` and `PROOF-RESULT` unless the response both reports verifier response information and intentionally advertises a fresh proof requirement for a subsequent attempt.
 
 When browser-based JavaScript needs to read `PROOF-REQUEST` or `PROOF-RESULT` from a cross-origin response, the response needs CORS exposure for those fields. When browser-based JavaScript sends `PROOF-RESPONSE` cross-origin, the server needs to allow the `PROOF-RESPONSE` request header through CORS preflight.
 
 ### x401 Payload
 
-A x401 payload is a single JSON object encoded in the `PROOF-REQUEST` header field.
+An x401 payload is a single JSON object encoded in the `PROOF-REQUEST` header field.
 
 The payload SHOULD remain compact. Sensitive route state SHOULD be omitted, stored server-side, or carried only inside verifier-protected nonce state.
 
@@ -472,7 +472,7 @@ The `digital` member is a `DigitalCredentialRequestOptions` value — the value 
     ]
   },
   "client_metadata": {},
-  "exp": 1746557100
+  "exp": 1778093100
 }
 ```
 
@@ -566,7 +566,7 @@ Acquisition guidance is advisory and never decides validity. The Verifier enforc
 
 ### Payment Object
 
-When payment may also be required, a x401 payload MAY declare the existence of that additional payment requirement. This is to help avoid situations where the user is not willing or able to pay, but does not find out about the payment requirement until after they have already disclosed their credential(s), resulting in needless sharing of identity information without achieving the outcome the user intended.
+When payment may also be required, an x401 payload MAY declare the existence of that additional payment requirement. This is to help avoid situations where the user is not willing or able to pay, but does not find out about the payment requirement until after they have already disclosed their credential(s), resulting in needless sharing of identity information without achieving the outcome the user intended.
 
 The payment object is informational and orchestration-oriented only. It does not replace `402 Payment Required`.
 
@@ -583,7 +583,7 @@ The presence of a `payment` member does not create a distinct x401 proof flow. T
 ```
 
 ::: warning payment hint warning
-There is good reason to include hints about payment requirements, but because it could result in replication of nearly everything 402-related protocols define, the payment hint has been constrained to a boolean to allow the community to drive how much payment requirement information to include.
+There is good reason to include hints about payment requirements, but because it could result in replication of nearly everything 402-related protocols define, the payment hint has been constrained to a small informational object to allow the community to drive how much payment requirement information to include.
 :::
 
 #### Members
@@ -672,7 +672,7 @@ Because relayed delivery does not go through a Web origin, `expected_origins` is
 A Verifier that may have its request fulfilled either natively — invoked through `navigator.credentials.get()` by a Credential Manager enforcing the Digital Credentials API — or by a remote handler that parses the request and generates a result manually MUST compose the request so it is self-contained and verifiable by a party with no prior relationship and no browser context. The governing test is: *could a Credential Manager that has never interacted with this Verifier verify the request and produce a correctly bound result from the request bytes alone?* A request composed only for the native path can silently fail this test even though a DC-API Credential Manager accepts it. To satisfy both paths, a Verifier:
 
 1. SHOULD use a signed request (`openid4vp-v1-signed`). It is the only request mode that carries any Verifier binding across a relay (audience via `client_id`), and it is equally valid natively. An unsigned request is fulfillable by a remote handler but binds only to the `nonce`; see [Verifier Binding](#verifier-binding).
-2. MUST make its identity and request-signing key resolvable from the request alone. The Verifier SHOULD embed its signing certificate chain in the request JWS `x5c` header, or use a `client_id` whose key material is publicly resolvable (for example a `did:` or `https:` scheme), so a handler with no prior relationship can verify the signature and confirm it matches `client_id` offline. A Verifier MUST NOT rely on a `client_id` scheme or key whose resolution depends on the invoking Web origin or on prior DC-API interaction, because neither exists on the relayed path.
+2. MUST make its identity and request-signing key resolvable from the request alone. The Verifier SHOULD embed its signing certificate chain in the request JWS `x5c` header (RFC 7515), or use a `client_id` whose key material is publicly resolvable (for example a `did:` or `https:` scheme), so a handler with no prior relationship can verify the signature and confirm it matches `client_id` offline. A Verifier MUST NOT rely on a `client_id` scheme or key whose resolution depends on the invoking Web origin or on prior DC-API interaction, because neither exists on the relayed path.
 3. MUST carry every input a fulfiller needs inside the request object: the `nonce`, the `dcql_query` (including any `credential_sets` / `claim_sets` alternatives), the accepted formats and any response-encryption key in `client_metadata`, and the `exp`. A remote handler reads these directly from the request `data` — the signed request object's claims for a signed request — not from any API surface, so a value referenced only through the DC-API or a same-origin session is unavailable to it.
 4. SHOULD still set the Digital Credentials API transport members — `response_mode` (`dc_api` / `dc_api.jwt`) and `expected_origins` — for the native path, but MUST NOT make correct processing depend on them. A remote handler treats them as not applicable (it returns to `return_uri` and there is no invoking origin to pre-authorize), so a request whose only Verifier binding is `expected_origins` degrades to `nonce`-only when relayed.
 5. SHOULD, when response confidentiality through the intermediary or `return_uri` host is required, supply a response-encryption key in `client_metadata` rather than relying on the `dc_api.jwt` response mode. The encryption key is honored on both paths, independent of `response_mode`; the transport-bound encryption of `dc_api.jwt` is not used when the result is delivered to `return_uri`.
@@ -704,7 +704,7 @@ An inline Result Artifact carries the Digital Credentials API result `{ protocol
   "request_id": "proof-template-financial-customer-v1",
   "credential_result": {
     "protocol": "openid4vp-v1-signed",
-    "data": "<credential-manager-returned-result>"
+    "data": { "vp_token": { "financial_customer": ["<presentation>"] } }
   }
 }
 ```
@@ -836,7 +836,7 @@ An Agent receiving an HTTP response with a `PROOF-REQUEST` proof requirement:
 
 1. MUST treat the response as a proof requirement.
 2. MUST extract the `PROOF-REQUEST` field value and base64url-decode it as a UTF-8 JSON [[ref: x401 Payload]].
-3. MUST validate the decoded payload structure and process the `proof` object.
+3. MUST validate the decoded payload structure and process its members.
 4. MUST treat `credential_requirements` as the Verifier-composed credential request and MUST NOT modify any of its entries.
 5. MUST obtain a [[ref: Credential Result]] for `credential_requirements` by invoking it through a native credential method, relaying it to a Credential Manager or remote service, or acquiring a remotely generated result.
 6. MAY select among multiple `credential_requirements.digital.requests` entries by protocol or supported credential format when more than one is present.
@@ -968,10 +968,10 @@ For Verification Tokens defined by this specification, the token endpoint MUST r
 Name | Definition
 ---- | ----------
 `access_token` | REQUIRED. The opaque or structured [[ref: Verification Token]] value issued to the [[ref: Agent]].
-`issued_token_type` | RECOMMENDED. Token type of the issued token. For Bearer access tokens, use `urn:ietf:params:oauth:token-type:access_token`.
+`issued_token_type` | REQUIRED. Token type of the issued token. For Bearer access tokens, use `urn:ietf:params:oauth:token-type:access_token`.
 `token_type` | REQUIRED. The HTTP authorization scheme the Agent uses with the token. The value defined by this specification is `Bearer`.
 `expires_in` | RECOMMENDED. Lifetime of the token in seconds from the time the response is generated.
-`scope` | OPTIONAL. OAuth scope string representing access authorized by the token.
+`scope` | OPTIONAL when identical to the scope the Agent requested, REQUIRED otherwise. OAuth scope string representing access authorized by the token.
 `x401` | RECOMMENDED. Object containing x401-specific token metadata that helps the Agent and Verifier understand what proof requirements were satisfied.
 
 #### Verification Token Retry Placement
@@ -1105,7 +1105,7 @@ The signed OpenID4VP request inside `credential_requirements.digital.requests[0]
       }
     ]
   },
-  "exp": 1746557100
+  "exp": 1778093100
 }
 ```
 
@@ -1133,7 +1133,7 @@ The decoded Result Artifact carries the credential result inline:
   "request_id": "proof-template-financial-customer-v1",
   "credential_result": {
     "protocol": "openid4vp-v1-signed",
-    "data": "<credential-manager-returned-result>"
+    "data": { "vp_token": { "financial_customer": ["<presentation>"] } }
   }
 }
 ```
@@ -1314,7 +1314,7 @@ On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof r
 }</data>
 ```
 
-Unlike the `PROOF-REQUEST` header value, the embedded form is the unencoded JSON object. The `<data>` element is already a text container, and the `$schema` member is intended to be directly readable by content processors that retain the object.
+Unlike the `PROOF-REQUEST` header value, the embedded form is the unencoded JSON object. The characters `<` and `&` inside the JSON text MUST be escaped as the HTML standard requires for text content (`&lt;`, `&amp;`); an HTML parser restores them, and a consumer that reads the raw markup without an HTML parser unescapes them before parsing the JSON. The `<data>` element is already a text container, and the `$schema` member is intended to be directly readable by content processors that retain the object.
 
 ### Placement and Scope
 
@@ -1485,7 +1485,8 @@ Future work should define when Agent binding is mandatory, how a Verifier advert
 - [RFC 6749: The OAuth 2.0 Authorization Framework](https://datatracker.ietf.org/doc/html/rfc6749)
 - [RFC 6750: The OAuth 2.0 Authorization Framework: Bearer Token Usage](https://datatracker.ietf.org/doc/html/rfc6750)
 - [RFC 7519: JSON Web Token](https://datatracker.ietf.org/doc/html/rfc7519)
-- [RFC 8414: OAuth 2.0 Authorization Server Metadata](https://datatracker.ietf.org/doc/html/rfc8414)
+- [RFC 3339: Date and Time on the Internet: Timestamps](https://datatracker.ietf.org/doc/html/rfc3339)
+- [RFC 7515: JSON Web Signature (JWS)](https://datatracker.ietf.org/doc/html/rfc7515)
 - [RFC 8693: OAuth 2.0 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693)
 - [RFC 9101: OAuth 2.0 JWT-Secured Authorization Request (JAR)](https://datatracker.ietf.org/doc/html/rfc9101)
 - [OpenID for Verifiable Presentations 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0-final.html), including its profile for use over the W3C Digital Credentials API
@@ -1573,7 +1574,7 @@ The JSON Schema below describes the x401 proof requirement payload. The same sch
     "$schema": {
       "type": "string",
       "format": "uri",
-      "description": "Optional informational marker. When the payload is embedded in HTML as a <data> element, this SHOULD be set to https://x401.id/spec/schemas/request.json so that content processors can recognize the object as an x401 proof requirement."
+      "description": "Informational marker, optional in the PROOF-REQUEST header form. When the payload is embedded in HTML as a <data> element, this MUST be set to https://x401.id/spec/schemas/request.json so that content processors can recognize the object as an x401 proof requirement."
     },
     "scheme": {
       "type": "string",
