@@ -6,3 +6,8 @@
 
 # Default owner for everything in the repository.
 * @proof/proof-product @frostevent
+
+# Dependency updates have no code owner, so a Dependabot pull request needs
+# no code-owner review: CI and the auto-merge workflow gate it instead.
+/package.json
+/package-lock.json
