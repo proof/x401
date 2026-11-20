@@ -9,8 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Aligned result binding with OpenID4VP: a result is bound to the Verifier's `nonce` and to the audience OpenID4VP defines for the request's `response_mode` (over the Digital Credentials API, the invoking Origin). `client_id` authenticates the Verifier and is never the audience. Rewrote "Verifier Binding", "Handler Processing", "Proof Validation", and the token endpoint validation rules accordingly.
-- A remote handler binds a relayed result to one of the request's `expected_origins`, so a relayed result validates like a native one. Only signed entries name an `expected_origins`, so a remote handler fulfills signed entries.
+- Result binding is delegated to OpenID4VP. The spec no longer describes what a result's audience is; it says a result is bound as OpenID4VP specifies for the request's mode and the transport that delivered it. The earlier text described a signed request as binding the result's audience to the Verifier's identity, which is not what OpenID4VP does over the Digital Credentials API.
 - Response encryption follows `response_mode` on both paths: `dc_api.jwt` with a key in `client_metadata.jwks` encrypts natively and on the relayed path (the remote handler produces the JWE); under `dc_api` the result travels in clear text. The relaying intermediary forwards the result unchanged.
 
 ## [0.2.0]
