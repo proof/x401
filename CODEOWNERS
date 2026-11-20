@@ -6,3 +6,6 @@
 
 # Default owner for everything in the repository.
 * @proof/proof-product
+
+# The Dependabot auto-merge workflow approves with the Actions token.
+* @github-actions[bot]
