@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Result binding is delegated to OpenID4VP. The spec no longer describes what a result's audience is; it says a result is bound as OpenID4VP specifies for the request's mode and the transport that delivered it. The earlier text described a signed request as binding the result's audience to the Verifier's identity, which is not what OpenID4VP does over the Digital Credentials API.
+- Response encryption follows `response_mode` on both paths: `dc_api.jwt` with a key in `client_metadata.jwks` encrypts natively and on the relayed path (the remote handler produces the JWE); under `dc_api` the result travels in clear text. The relaying intermediary forwards the result unchanged.
+
 ## [0.2.0]
 
 Reworks the proof requirement from a decomposed OpenID4VP request the Agent assembles into a composed, Verifier-authored Digital Credentials request the Agent executes, relays, or acquires remotely. This is a breaking change to the `proof` object and the VP Artifact.
