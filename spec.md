@@ -622,7 +622,7 @@ In every case the result is bound per the request's mode and transport — to th
 The composed request is authored and signed by the Verifier. The Agent treats it as opaque:
 
 1. The Agent MUST NOT modify any entry in `credential_requirements`. The request signature binds its contents, so any modification invalidates it.
-2. When `credential_requirements.digital.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Credential Manager or handler implements, and MAY pass the entries through unchanged.; which entry is used is determined by the Credential Manager or handler matching the request against available credentials, not chosen up front by the Agent.
+2. When `credential_requirements.digital.requests` contains more than one entry, the Agent MAY narrow them to entries whose `protocol` or credential formats the chosen Credential Manager or handler implements, and MAY pass the entries through unchanged; which entry is used is determined by the Credential Manager or handler matching the request against available credentials, not chosen up front by the Agent.
 3. The Agent MUST arrange to acquire the [[ref: Credential Result]] returned for the request, whether it invokes the request itself, relays it, or acquires a remotely generated result.
 
 A Verifier composing `credential_requirements.digital`:
