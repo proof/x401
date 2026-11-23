@@ -1314,7 +1314,7 @@ On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof r
 }</data>
 ```
 
-Unlike the `PROOF-REQUEST` header value, the embedded form is the unencoded JSON object. The characters `<` and `&` inside the JSON text MUST be escaped as the HTML standard requires for text content (`&lt;`, `&amp;`); an HTML parser restores them, and a consumer that reads the raw markup without an HTML parser unescapes them before parsing the JSON. The `<data>` element is already a text container, and the `$schema` member is intended to be directly readable by content processors that retain the object.
+Unlike the `PROOF-REQUEST` header value, the embedded form is the unencoded JSON object. The JSON text MUST NOT contain the characters `<` or `&`; a serializer writes them as the JSON escapes `\u003c` and `\u0026`, so the text is identical before and after HTML parsing and every consumer passes it to a JSON parser unchanged. The `<data>` element is already a text container, and the `$schema` member is intended to be directly readable by content processors that retain the object.
 
 ### Placement and Scope
 
