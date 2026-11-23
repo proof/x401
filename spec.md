@@ -136,7 +136,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **
 ~ The composed, valid Digital Credentials request the Verifier places in the `digital` member of the payload's `credential_requirements`. It is a `DigitalCredentialRequestOptions` value (`{ "requests": [ ... ] }`) — the value the `digital` member of `navigator.credentials.get()` takes. Each entry is an OpenID4VP request for the DC API, signed (RECOMMENDED) or unsigned.
 
 [[def: Proof Request]]:
-~ The Verifier-authored OpenID4VP request carried inside the [[ref: Digital Credentials Request]]. It identifies the credential requirement as `dcql_query` and carries the OpenID4VP `nonce`. When signed (RECOMMENDED), the Verifier is its relying party. The binding a result carries is defined by OpenID4VP for the request's mode and the transport that delivered it; see [Verifier Binding](#verifier-binding).
+~ The Verifier-authored OpenID4VP request carried inside the [[ref: Digital Credentials Request]]. It identifies the credential requirement as `dcql_query` and carries the OpenID4VP `nonce`. When signed (RECOMMENDED), the Verifier is its relying party; see [Verifier Binding](#verifier-binding).
 
 [[def: Credential Result]]:
 ~ The result a Credential Manager returns for a [[ref: Digital Credentials Request]], shaped as `{ "protocol": ..., "data": ... }` as returned by the Digital Credentials API.
@@ -227,7 +227,7 @@ In the primary x401 flow, the [[ref: Agent]] is the HTTP caller and is assumed t
    - invoking the request through a native credential method such as `navigator.credentials.get(payload.credential_requirements)`,
    - relaying the request to a Credential Manager or remote presentation service that can execute it, or
    - handing the request to a remote fulfillment surface and acquiring the generated result.
-6. The chosen Credential Manager, handler, or service returns a credential result bound as OpenID4VP specifies for the request's mode and transport.
+6. The chosen Credential Manager, handler, or service returns a credential result.
 7. The [[ref: Agent]] retries the same protected route that produced the x401 proof requirement with one of:
    - a [[ref: Result Artifact]] in a `PROOF-RESPONSE` request header, carrying the credential result inline or as a [[ref: Credential Reference]],
    - a [[ref: Verification Token]] carried as an x401 Token Object in a `PROOF-RESPONSE` request header, or
@@ -245,7 +245,7 @@ sequenceDiagram
     Agent->>Verifier: Request protected route
     Verifier-->>Agent: HTTP response + PROOF-REQUEST (composed request)
     Agent->>CM: Invoke / relay verifier-composed Digital Credentials request
-    CM-->>Agent: Credential result (bound per OpenID4VP)
+    CM-->>Agent: Credential result
     Agent->>Verifier: Retry route with PROOF-RESPONSE result or OAuth token
     opt Payment required after proof satisfaction
         Verifier-->>Agent: 402 Payment Required
@@ -268,7 +268,7 @@ sequenceDiagram
     Agent->>Verifier: Request protected route
     Verifier-->>Agent: HTTP response + PROOF-REQUEST (composed request)
     Agent->>CM: Invoke / relay verifier-composed Digital Credentials request
-    CM-->>Agent: Credential result (bound per OpenID4VP)
+    CM-->>Agent: Credential result
     Agent->>Verifier: OAuth token request with Result Artifact
     Verifier-->>Agent: Verification token
     Agent->>Verifier: Retry same route with Authorization token or PROOF-RESPONSE token object
@@ -615,7 +615,7 @@ An Agent obtains a result by one of the following, all of which carry the same V
 
 3. **Remote, out-of-band generation.** When the Agent's environment cannot invoke the request directly — for example, a consumer AI client without a credential handler — the request can be handed to a remote fulfillment surface (such as a verifier-hosted page) that invokes the Digital Credentials API in its own context and generates the result. The Agent then acquires the result and replays the protected route. See [Remote and Out-of-Band Fulfillment](#remote-and-out-of-band-fulfillment).
 
-In every case the result is bound as OpenID4VP specifies for the request's mode and the transport that delivered it; see [Verifier Binding](#verifier-binding). The Agent is not part of that binding.
+The result's binding is described in [Verifier Binding](#verifier-binding); it does not involve the Agent.
 
 ### Composed Request Invariants
 
@@ -660,7 +660,7 @@ The intermediary passes `credential_requirements` to the handler unchanged; the 
 
 1. MUST consider the `requests[]` entries whose `protocol` and credential formats it implements, and among those, MUST attempt to satisfy each entry's `dcql_query` — including any `credential_sets` / `claim_sets` alternatives within it — against the credentials available to it, with Holder selection where applicable. Which entry is used is the *outcome* of this matching, not a prior choice; an entry is usable only if a held credential satisfies its query.
 2. For a satisfiable entry, MUST read the OpenID4VP request from its `data` — the claims of the signed request object for `openid4vp-v1-signed`, or the request parameters directly for `openid4vp-v1-unsigned` — and produce a result that satisfies that `dcql_query`, bound to its `nonce`. It honors `client_metadata` for accepted formats and, when `response_mode` is `dc_api.jwt`, encrypts the result with the key in `client_metadata.jwks`. For a signed request it binds the result's audience to the request's `client_id`.
-3. MUST treat the Digital Credentials API transport as not applicable to relayed delivery: it returns the result to `return_uri`, and it does not enforce `expected_origins` (there is no invoking Web origin). `response_mode` still governs whether the result is encrypted.
+3. MUST treat the Digital Credentials API transport as not applicable to relayed delivery: it returns the result to `return_uri`, and it does not enforce `expected_origins` (there is no invoking Web origin).
 4. MUST NOT weaken or alter the `dcql_query` or `nonce`, and MUST deliver the resulting [[ref: Credential Result]] to `return_uri`. If it can satisfy no entry, it returns no result and SHOULD signal that failure to the intermediary rather than returning a partial or substitute result.
 
 This matching, credential discovery, and Holder selection follow the same OpenID4VP and DCQL rules a Credential Manager applies under the Digital Credentials API; x401 does not redefine them.
@@ -674,8 +674,8 @@ A Verifier that may have its request fulfilled either natively — invoked throu
 1. SHOULD use a signed request (`openid4vp-v1-signed`). It is the only request mode that carries any Verifier binding across a relay (audience via `client_id`), and it is equally valid natively. An unsigned request is fulfillable by a remote handler but binds only to the `nonce`; see [Verifier Binding](#verifier-binding).
 2. MUST make its identity and request-signing key resolvable from the request alone. The Verifier SHOULD embed its signing certificate chain in the request JWS `x5c` header, or use a `client_id` whose key material is publicly resolvable (for example a `did:` or `https:` scheme), so a handler with no prior relationship can verify the signature and confirm it matches `client_id` offline. A Verifier MUST NOT rely on a `client_id` scheme or key whose resolution depends on the invoking Web origin or on prior DC-API interaction, because neither exists on the relayed path.
 3. MUST carry every input a fulfiller needs inside the request object: the `nonce`, the `dcql_query` (including any `credential_sets` / `claim_sets` alternatives), the accepted formats and any response-encryption key in `client_metadata`, and the `exp`. A remote handler reads these directly from the request `data` — the signed request object's claims for a signed request — not from any API surface, so a value referenced only through the DC-API or a same-origin session is unavailable to it.
-4. SHOULD still set `expected_origins` for the native path, but MUST NOT make correct processing depend on it. A remote handler has no invoking origin to pre-authorize, so a request whose only Verifier binding is `expected_origins` degrades to `nonce`-only when relayed. `response_mode` (`dc_api` / `dc_api.jwt`) applies on both paths, because it governs encryption.
-5. MUST, when response confidentiality through the intermediary or the `return_uri` host is required, set `response_mode` to `dc_api.jwt` and supply the key in `client_metadata.jwks`. Encryption follows `response_mode` on both paths: under `dc_api.jwt` the Credential Manager or the remote handler produces the encrypted `response`, and under `dc_api` the result travels in clear text. The relaying intermediary forwards the result unchanged.
+4. SHOULD still set `expected_origins` for the native path, but MUST NOT make correct processing depend on it. A remote handler has no invoking origin to pre-authorize, so a request whose only Verifier binding is `expected_origins` degrades to `nonce`-only when relayed.
+5. MUST, when response confidentiality through the intermediary or the `return_uri` host is required, set `response_mode` to `dc_api.jwt` and supply the key in `client_metadata.jwks`; the Credential Manager or the remote handler then produces the encrypted `response`, and the relaying intermediary forwards it unchanged. Under `dc_api` the result travels in clear text on both paths.
 6. SHOULD size `exp` to accommodate relay latency and Holder interaction, which take longer than a same-device interactive flow, and SHOULD rely on the freshness and uniqueness of the `nonce` for replay protection rather than on a tight `exp`; see [Verifier State and Stateless Operation](#verifier-state-and-stateless-operation).
 7. SHOULD use signature algorithms and credential formats an arbitrary Credential Manager can verify and produce, and SHOULD NOT over-constrain `client_metadata` to formats only a specific native Credential Manager implements.
 
@@ -885,7 +885,7 @@ The Verifier MUST:
 6. verify issuer trust, credential status, revocation, expiration, assurance, and any additional route policy;
 7. when the deployment binds the Agent, determine and verify the [[ref: Agent Identifier]] for the HTTP caller and reject the retry if it cannot be bound; see [Agent Binding Options](#agent-binding-options).
 
-The binding a result carries depends on the request's mode and transport, as described in [Verifier Binding](#verifier-binding); for an unsigned request the Verifier SHOULD reinforce it as described there. In either case the result is not, by itself, bound to the Agent: Agent binding is OPTIONAL and, when used, is an additional check layered over this validation.
+For an unsigned request the Verifier SHOULD reinforce the binding as described in [Verifier Binding](#verifier-binding). In either case the result is not, by itself, bound to the Agent: Agent binding is OPTIONAL and, when used, is an additional check layered over this validation.
 
 ## Access Token Acquisition
 
@@ -928,7 +928,7 @@ The submitted Result Artifact MAY carry the credential result inline or as a [[r
 
 The token endpoint MUST process the submitted Result Artifact using the same proof validation rules that apply to direct protected-route retry. In particular, it MUST verify that:
 
-1. the result is cryptographically valid and bound as OpenID4VP specifies for the request's mode and transport, as described in [Proof Validation](#proof-validation);
+1. the result is cryptographically valid and bound as [Proof Validation](#proof-validation) requires;
 2. the credential material satisfies the `dcql_query` carried in the request for the requested resource;
 3. the result's OpenID4VP `nonce` is one the Verifier issued, applying its freshness and replay policy;
 4. when the deployment binds the Agent, the result and retry bind to the required Agent Identifier.
@@ -1216,7 +1216,7 @@ PROOF-RESPONSE: <base64url-x401-token-object>
 
 ## Composable Agent and Entity Identification
 
-A returned result is already bound as OpenID4VP specifies for the request's mode and transport; see [Verifier Binding](#verifier-binding). x401 does not, by default, require the result to be bound to the Agent, and it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
+A returned result is bound as described in [Verifier Binding](#verifier-binding). x401 does not, by default, require the result to be bound to the Agent, and it does not define a single global agent identity system. Deployments MAY layer additional mechanisms over x401 to authenticate the calling agent, bind an entity identity to the HTTP request, sender-constrain a Verification Token, or carry delegation evidence from a user, organization, workload, or upstream agent.
 
 These mechanisms compose cleanly with x401 when they:
 
