@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Examples: `data` is shown as the object the Digital Credentials API returns; the JAR `exp` lands on the same day as the `expires_at` values; the payment warning describes the hint as a small object.
 - References: dropped RFC 8414 (never cited); added RFC 3339 (`expires_at`) and RFC 7515 (`x5c`).
 - "a x401" → "an x401".
+- Site build renders a copy of the current spec at `/spec/<version>/` and serves a `404.html`, so a versioned URL such as `/spec/0.2.0` no longer falls into the root redirect loop.
 
 ## [0.2.0]
 
