@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `credential_result_uri` is supplied by the Agent, not issued by the Verifier. The result may be hosted by the Agent, the relaying intermediary, or the remote fulfillment surface. The Verifier fetches an Agent-chosen `https` URL with redirect, address, size, and time bounds. `expires_at` now describes how long the host serves the URL.
+
 ### Fixed
 
+- By-reference example URL no longer uses a `.well-known` path, which RFC 8615 reserves for registered names.
 - Site build renders a copy of the current spec at `/spec/<version>/` and serves a `404.html`, so a versioned URL such as `/spec/0.2.0` no longer falls into the root redirect loop.
 
 ## [0.2.0]
