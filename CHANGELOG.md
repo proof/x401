@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Token exchange response table follows RFC 8693 §2.2.1: `issued_token_type` is REQUIRED; `scope` is OPTIONAL when identical to the scope the Agent requested and REQUIRED otherwise.
+- Agent Processing Rules no longer refer to the `proof` object removed in 0.2.0.
+- Removed a SHOULD NOT sentence about multiple `PROOF-RESPONSE` values that restated, at a weaker level, the MUST NOT single-field-line rule above it.
+- Result Artifact and Credential Reference definitions no longer refer to each other in a loop.
+- The embedded `<data>` JSON writes `<` and `&` as the JSON escapes `\u003c` and `\u0026`, so the text survives HTML parsing unchanged; Appendix C says `$schema` MUST be set when embedded, matching the section text.
+- A `PROOF-RESULT` object that carries an `error` member is the x401 Error Object; deployment-defined objects MUST NOT carry one.
+- Examples: `data` is shown as the object the Digital Credentials API returns; the JAR `exp` lands on the same day as the `expires_at` values; the payment warning describes the hint as a small object.
+- References: dropped RFC 8414 (never cited); added RFC 3339 (`expires_at`) and RFC 7515 (`x5c`).
+- "a x401" → "an x401".
 - Site build renders a copy of the current spec at `/spec/<version>/` and serves a `404.html`, so a versioned URL such as `/spec/0.2.0` no longer falls into the root redirect loop.
 
 ## [0.2.0]
