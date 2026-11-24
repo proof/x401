@@ -22,7 +22,7 @@ The Agent then retries the original route with the presentation result. A typica
 
 ```
 Agent ──▶ GET /protected                      (no proof)
-Verifier ─▶ 401 + PROOF-REQUEST: <payload>     (composed signed DC request)
+Verifier ─▶ 403 + PROOF-REQUEST: <payload>     (composed signed DC request)
 Agent ──▶ obtain a presentation for the request (native / relay / remote)
 Agent ──▶ GET /protected + PROOF-RESPONSE: <result or reference>
 Verifier ─▶ 200 OK                             (proof validated)

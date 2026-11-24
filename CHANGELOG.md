@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Examples use `403 Forbidden` instead of `401 Unauthorized`, because RFC 9110 requires a `WWW-Authenticate` challenge on every 401 and x401 defines none. The body-embedded `<data>` carrier is no longer described as limited to non-`401` responses.
+
 ### Fixed
 
+- DCQL example: `type_values` for `jwt_vc_json` is an array of string arrays (`[["FinancialCustomerCredential"]]`).
+- Client Identifier Prefix examples use the OpenID4VP 1.0 names `decentralized_identifier:` and `openid_federation:` instead of `did:` and `https:`.
 - Site build renders a copy of the current spec at `/spec/<version>/` and serves a `404.html`, so a versioned URL such as `/spec/0.2.0` no longer falls into the root redirect loop.
 
 ## [0.2.0]

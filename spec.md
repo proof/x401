@@ -170,7 +170,7 @@ The x401 protocol is made up of four legs: a Verifier exposes identity proof req
 The Verifier declares a route-scoped proof requirement by returning a `PROOF-REQUEST` header. The header carries the base64url-encoded x401 payload that defines the route's proof requirement; see [x401 Gated Resource Configuration](#x401-gated-resource-configuration) for details. The response status code describes the overall HTTP response and is not the x401 protocol carrier.
 
 ```http
-HTTP/1.1 401 Unauthorized
+HTTP/1.1 403 Forbidden
 PROOF-REQUEST: <base64url-x401-payload>
 Cache-Control: no-store
 ```
@@ -288,7 +288,7 @@ POST /accounts/applications HTTP/1.1
 Host: bank.example.com
 Accept: application/json
 
-HTTP/1.1 401 Unauthorized
+HTTP/1.1 403 Forbidden
 PROOF-REQUEST: <base64url-x401-payload>
 Cache-Control: no-store
 ```
@@ -460,7 +460,7 @@ The `digital` member is a `DigitalCredentialRequestOptions` value — the value 
         "id": "financial_customer",
         "format": "jwt_vc_json",
         "meta": {
-          "type_values": ["FinancialCustomerCredential"]
+          "type_values": [["FinancialCustomerCredential"]]
         },
         "claims": [
           {
@@ -672,7 +672,7 @@ Because relayed delivery does not go through a Web origin, `expected_origins` is
 A Verifier that may have its request fulfilled either natively — invoked through `navigator.credentials.get()` by a Credential Manager enforcing the Digital Credentials API — or by a remote handler that parses the request and generates a result manually MUST compose the request so it is self-contained and verifiable by a party with no prior relationship and no browser context. The governing test is: *could a Credential Manager that has never interacted with this Verifier verify the request and produce a correctly bound result from the request bytes alone?* A request composed only for the native path can silently fail this test even though a DC-API Credential Manager accepts it. To satisfy both paths, a Verifier:
 
 1. SHOULD use a signed request (`openid4vp-v1-signed`). It is the only request mode that carries any Verifier binding across a relay (audience via `client_id`), and it is equally valid natively. An unsigned request is fulfillable by a remote handler but binds only to the `nonce`; see [Verifier Binding](#verifier-binding).
-2. MUST make its identity and request-signing key resolvable from the request alone. The Verifier SHOULD embed its signing certificate chain in the request JWS `x5c` header, or use a `client_id` whose key material is publicly resolvable (for example a `did:` or `https:` scheme), so a handler with no prior relationship can verify the signature and confirm it matches `client_id` offline. A Verifier MUST NOT rely on a `client_id` scheme or key whose resolution depends on the invoking Web origin or on prior DC-API interaction, because neither exists on the relayed path.
+2. MUST make its identity and request-signing key resolvable from the request alone. The Verifier SHOULD embed its signing certificate chain in the request JWS `x5c` header, or use a `client_id` whose key material is publicly resolvable (for example the `decentralized_identifier:` or `openid_federation:` Client Identifier Prefix), so a handler with no prior relationship can verify the signature and confirm it matches `client_id` offline. A Verifier MUST NOT rely on a `client_id` scheme or key whose resolution depends on the invoking Web origin or on prior DC-API interaction, because neither exists on the relayed path.
 3. MUST carry every input a fulfiller needs inside the request object: the `nonce`, the `dcql_query` (including any `credential_sets` / `claim_sets` alternatives), the accepted formats and any response-encryption key in `client_metadata`, and the `exp`. A remote handler reads these directly from the request `data` — the signed request object's claims for a signed request — not from any API surface, so a value referenced only through the DC-API or a same-origin session is unavailable to it.
 4. SHOULD still set the Digital Credentials API transport members — `response_mode` (`dc_api` / `dc_api.jwt`) and `expected_origins` — for the native path, but MUST NOT make correct processing depend on them. A remote handler treats them as not applicable (it returns to `return_uri` and there is no invoking origin to pre-authorize), so a request whose only Verifier binding is `expected_origins` degrades to `nonce`-only when relayed.
 5. SHOULD, when response confidentiality through the intermediary or `return_uri` host is required, supply a response-encryption key in `client_metadata` rather than relying on the `dc_api.jwt` response mode. The encryption key is honored on both paths, independent of `response_mode`; the transport-bound encryption of `dc_api.jwt` is not used when the result is delivered to `return_uri`.
@@ -1046,7 +1046,7 @@ Host: bank.example.com
 #### Response
 
 ```http
-HTTP/1.1 401 Unauthorized
+HTTP/1.1 403 Forbidden
 PROOF-REQUEST: <base64url-x401-payload>
 Cache-Control: no-store
 ```
@@ -1094,7 +1094,7 @@ The signed OpenID4VP request inside `credential_requirements.digital.requests[0]
         "id": "financial_customer",
         "format": "jwt_vc_json",
         "meta": {
-          "type_values": ["FinancialCustomerCredential"]
+          "type_values": [["FinancialCustomerCredential"]]
         },
         "claims": [
           {
@@ -1153,12 +1153,12 @@ When the credential result is too large for a header field, or was generated at 
 #### Failed Retry With x401 Error
 
 ```http
-HTTP/1.1 401 Unauthorized
+HTTP/1.1 403 Forbidden
 PROOF-RESULT: <base64url-x401-error-object>
 Cache-Control: no-store
 ```
 
-The decoded x401 Error Object describes the failed credential result. The `401 Unauthorized` status in this example means the route was not completed because the x401 proof branch failed.
+The decoded x401 Error Object describes the failed credential result. The `403 Forbidden` status in this example means the route was not completed because the x401 proof branch failed.
 
 ### Example 2: OAuth Token Exchange
 
@@ -1284,7 +1284,7 @@ A Verifier that wants its gating requirements to be discoverable by these consum
 
 ### Embedded Proof Requirements in HTML Content
 
-On a non-`401` HTML response, the Verifier MAY emit each advertised x401 proof requirement as a single HTML `<data>` element placed in the document body at, near, or wrapping the content to which the requirement applies. The element:
+On an HTML response, whatever its status code, the Verifier MAY emit each advertised x401 proof requirement as a single HTML `<data>` element placed in the document body at, near, or wrapping the content to which the requirement applies. The element:
 
 1. MUST use the tag name `data`.
 2. MUST set the `value` attribute to the MIME-type expression `application/json;x401=proof-required`. The `x401` parameter identifies the embedded carrier and signals the role of the element's text content.
